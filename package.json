@@ -9,13 +9,22 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@turf/bbox": "^7.3.4",
+    "@turf/buffer": "^7.3.4",
+    "@turf/helpers": "^7.3.4",
+    "leaflet": "^1.9.4",
+    "leaflet-rotate": "^0.2.8",
     "next": "16.1.6",
+    "pg": "^8.19.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-leaflet": "^5.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^20",
+    "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
