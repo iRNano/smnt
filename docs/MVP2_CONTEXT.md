@@ -40,6 +40,10 @@ Bounds lock and section interactivity from Phase 2A apply in the rotated view.
 
 ---
 
+## Real data (terrain extent)
+
+- The map’s Sierra Madre terrain highlight uses **Northern Sierra Madre Natural Park (NSMNP)** approximate boundary (real data). NSMNP is the largest protected area in the Philippines (359,486 ha, Isabela). See [lib/sierraMadreExtent.ts](../lib/sierraMadreExtent.ts). For precise boundaries, use NIPAS shapefiles (DENR-BMB, foi.gov.ph) or OSM relation 2784140.
+
 ## References
 
 - Plan: MVP 2 Map Customization (locked view, sections, horizontal view).

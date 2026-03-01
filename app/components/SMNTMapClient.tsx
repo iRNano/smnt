@@ -9,7 +9,9 @@ import { lineString } from "@turf/helpers";
 // Leaflet CSS must be loaded on client
 import "leaflet/dist/leaflet.css";
 
+// import { sierraMadreExtent } from "@/lib/sierraMadreExtent"; // NSMNP commented out for now
 import { MapBoundsController } from "./MapBoundsController";
+import { MapRotationControl } from "./MapRotationControl";
 
 type RouteRow = {
   id: string;
@@ -95,22 +97,22 @@ function MapContent({ data }: { data: MapData }) {
 
   const SECTION_BUFFER_KM = 10;
   const sectionPolygonFeatures = useMemo(
-    (): GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon> => ({
-      type: "FeatureCollection",
-      features: (data.sections || [])
-        .map((s) => {
-          const line = lineString(s.geometry.coordinates);
-          const buffered = buffer(line, SECTION_BUFFER_KM, { units: "kilometers" });
-          const geom = buffered.geometry ?? (buffered as unknown as GeoJSON.Polygon);
-          return {
-            type: "Feature" as const,
-            id: `poly-${s.id}`,
-            properties: { slug: s.slug, sectionId: s.id, name: s.name },
-            geometry: geom as GeoJSON.Polygon | GeoJSON.MultiPolygon,
-          };
-        })
-        .filter((f): f is GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> => f.geometry != null),
-    }),
+    (): GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon> => {
+      const features: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>[] = [];
+      for (const s of data.sections || []) {
+        const line = lineString(s.geometry.coordinates);
+        const buffered = buffer(line, SECTION_BUFFER_KM, { units: "kilometers" });
+        const geom = buffered?.geometry;
+        if (!geom) continue;
+        features.push({
+          type: "Feature",
+          id: `poly-${s.id}`,
+          properties: { slug: s.slug, sectionId: s.id, name: s.name },
+          geometry: geom as GeoJSON.Polygon | GeoJSON.MultiPolygon,
+        });
+      }
+      return { type: "FeatureCollection", features };
+    },
     [data.sections]
   );
 
@@ -213,6 +215,16 @@ function MapContent({ data }: { data: MapData }) {
     style: (f?: GeoJSON.Feature<GeoJSON.LineString>) => { color: string; weight: number; opacity: number };
     onEachFeature: (feature: GeoJSON.Feature<GeoJSON.LineString>, layer: L.Layer) => void;
   }>;
+  const GJPolygon = GeoJSON as React.ComponentType<{
+    data: GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
+    style: () => {
+      fillColor: string;
+      fillOpacity: number;
+      color: string;
+      weight: number;
+      opacity: number;
+    };
+  }>;
   const GJSections = GeoJSON as React.ComponentType<{
     data: GeoJSON.FeatureCollection<GeoJSON.LineString>;
     style: () => { color: string; weight: number; opacity: number };
@@ -251,6 +263,19 @@ function MapContent({ data }: { data: MapData }) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {/* NSMNP terrain polygon commented out for now
+      <GJPolygon
+        data={sierraMadreExtent}
+        style={() => ({
+          fillColor: "#22C55E",
+          fillOpacity: 0.3,
+          color: "#16A34A",
+          weight: 1.5,
+          opacity: 0.9,
+        })}
+      />
+      */}
+      <MapRotationControl />
       <GJ data={routeFeatures} style={routeStyle} onEachFeature={onEachRouteFeature} />
       {sectionFeatures.features.length > 0 && (
         <GJSections
