@@ -242,6 +242,7 @@ function MapContent({
           longitude: 121.8,
           latitude: 16.4,
           zoom: 7.5,
+          bearing: 90,
         }}
         mapStyle="mapbox://styles/mapbox/outdoors-v12"
         onLoad={onMapLoad}
