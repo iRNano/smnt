@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Pool } from "pg";
+import { getEntryExitPoisSuggested, getGpxCorridor, getGpxMainRouteGeometry, getGpxProfile } from "@/lib/loadGpxTrail";
 import { mockMapData } from "@/lib/mockMapData";
 
 function getPool(): Pool | null {
@@ -21,10 +22,31 @@ function poolOrNull(): Pool | null {
 export async function GET() {
   const pool = poolOrNull();
   if (!pool) {
+    const gpxGeometry = getGpxMainRouteGeometry();
+    // Mock data and sections commented out: only show GPX trail
+    const routes =
+      gpxGeometry?.coordinates?.length ?
+        [
+          {
+            id: "gpx-trail",
+            name: "Sierra Madre Nature Trail",
+            route_type: "main",
+            explorer_credits: [],
+            opened_at: null,
+            geometry: gpxGeometry,
+          },
+        ]
+      : [];
+    const trailProfile = getGpxProfile();
+    const trailCorridor = getGpxCorridor();
+    const entryExitPoisSuggested = getEntryExitPoisSuggested();
     return NextResponse.json({
-      routes: mockMapData.routes,
-      pois: mockMapData.pois,
-      sections: mockMapData.sections,
+      routes,
+      pois: [],
+      sections: [],
+      trailProfile: trailProfile ?? null,
+      trailCorridor: trailCorridor ?? null,
+      entryExitPoisSuggested,
     });
   }
 
@@ -66,7 +88,7 @@ export async function GET() {
     return NextResponse.json({
       routes,
       pois,
-      sections: mockMapData.sections,
+      sections: mockMapData.sections, // DB mode still uses mock sections
     });
   } catch (err) {
     console.error("Map API error:", err);

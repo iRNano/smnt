@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import along from "@turf/along";
 import bbox from "@turf/bbox";
 import buffer from "@turf/buffer";
 import { lineString } from "@turf/helpers";
@@ -10,6 +11,7 @@ import { lineString } from "@turf/helpers";
 import "leaflet/dist/leaflet.css";
 
 // import { sierraMadreExtent } from "@/lib/sierraMadreExtent"; // NSMNP commented out for now
+import { ElevationProfileOverlay } from "./ElevationProfileOverlay";
 import { MapBoundsController } from "./MapBoundsController";
 import { MapRotationControl } from "./MapRotationControl";
 
@@ -40,7 +42,17 @@ type SectionRow = {
   geometry: GeoJSON.LineString;
 };
 
-type MapData = { routes: RouteRow[]; pois: PoiRow[]; sections: SectionRow[] };
+type TrailProfile = { distances: number[]; elevations: number[] } | null;
+type MapData = {
+  routes: RouteRow[];
+  pois: PoiRow[];
+  sections: SectionRow[];
+  trailProfile?: TrailProfile;
+  trailCorridor?: GeoJSON.Feature<GeoJSON.Polygon> | null;
+  entryExitPoisSuggested?: PoiRow[];
+};
+
+const ENTRY_EXIT_POIS_STORAGE_KEY = "smnt-entry-exit-pois";
 
 const ROUTE_COLORS: Record<string, string> = {
   main: "#22C55E",
@@ -48,7 +60,15 @@ const ROUTE_COLORS: Record<string, string> = {
   not_passable: "#EF4444",
 };
 
-function MapContent({ data }: { data: MapData }) {
+function MapContent({
+  data,
+  userEntryExitPois,
+  onAddEntryExit,
+}: {
+  data: MapData;
+  userEntryExitPois: PoiRow[];
+  onAddEntryExit: (distanceKm: number, elevationM: number) => void;
+}) {
   const router = useRouter();
   const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
   const [MapContainer, setMapContainer] = useState<React.ComponentType<unknown> | null>(null);
@@ -276,7 +296,51 @@ function MapContent({ data }: { data: MapData }) {
       />
       */}
       <MapRotationControl />
+      {data.trailCorridor?.geometry && (
+        <GJPolygon
+          data={{
+            type: "FeatureCollection",
+            features: [data.trailCorridor],
+          }}
+          style={() => ({
+            fillColor: "#22C55E",
+            fillOpacity: 0.15,
+            color: "#16A34A",
+            weight: 1,
+            opacity: 0.7,
+          })}
+        />
+      )}
+      <ElevationProfileOverlay
+        trailProfile={data.trailProfile ?? null}
+        onAddEntryExit={onAddEntryExit}
+      />
       <GJ data={routeFeatures} style={routeStyle} onEachFeature={onEachRouteFeature} />
+      {[...(data.entryExitPoisSuggested ?? []), ...userEntryExitPois].map((poi) => {
+        const coords = poi.geometry.coordinates;
+        const [lng, lat] = coords;
+        const CM = CircleMarker as React.ComponentType<{
+          center: [number, number];
+          radius: number;
+          pathOptions?: { color: string; fillColor: string; fillOpacity: number; weight: number };
+          children: React.ReactNode;
+        }>;
+        const P = Popup as React.ComponentType<{ children: React.ReactNode }>;
+        return (
+          <CM
+            key={poi.id}
+            center={[lat, lng]}
+            radius={8}
+            pathOptions={{ color: "#EA580C", fillColor: "#F97316", fillOpacity: 0.9, weight: 2 }}
+          >
+            <P>
+              <strong>{poi.name}</strong>
+              {poi.description && <p className="mt-1 text-sm">{poi.description}</p>}
+            </P>
+          </CM>
+        );
+      })}
+      {/* Interactive section polygons and other POIs commented out
       {sectionFeatures.features.length > 0 && (
         <GJSections
           data={sectionFeatures}
@@ -315,13 +379,68 @@ function MapContent({ data }: { data: MapData }) {
           </CM>
         );
       })}
+      */}
     </MC>
   );
+}
+
+function loadUserEntryExitPois(): PoiRow[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(ENTRY_EXIT_POIS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (p): p is PoiRow =>
+        p &&
+        typeof p === "object" &&
+        typeof (p as PoiRow).id === "string" &&
+        typeof (p as PoiRow).name === "string" &&
+        (p as PoiRow).geometry?.type === "Point" &&
+        Array.isArray((p as PoiRow).geometry?.coordinates)
+    );
+  } catch {
+    return [];
+  }
 }
 
 export default function SMNTMapClient() {
   const [data, setData] = useState<MapData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [userEntryExitPois, setUserEntryExitPois] = useState<PoiRow[]>([]);
+
+  useEffect(() => {
+    setUserEntryExitPois(loadUserEntryExitPois());
+  }, []);
+
+  const handleAddEntryExit = useCallback(
+    (distanceKm: number, _elevationM: number) => {
+      if (!data?.routes?.length) return;
+      const main = data.routes.find((r) => r.route_type === "main") ?? data.routes[0];
+      if (!main?.geometry?.coordinates?.length) return;
+      const line = lineString(main.geometry.coordinates);
+      const pt = along(line, distanceKm, { units: "kilometers" });
+      const [lng, lat] = pt.geometry.coordinates;
+      const newPoi: PoiRow = {
+        id: `entry-exit-user-${Date.now()}`,
+        name: "Entry/exit point",
+        poi_type: "entry_exit",
+        description: null,
+        geometry: { type: "Point", coordinates: [lng, lat] },
+      };
+      setUserEntryExitPois((prev) => {
+        const next = [...prev, newPoi];
+        try {
+          window.localStorage.setItem(ENTRY_EXIT_POIS_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    },
+    [data?.routes]
+  );
 
   useEffect(() => {
     fetch("/api/map")
@@ -334,6 +453,9 @@ export default function SMNTMapClient() {
           routes: json.routes ?? [],
           pois: json.pois ?? [],
           sections: json.sections ?? [],
+          trailProfile: json.trailProfile ?? null,
+          trailCorridor: json.trailCorridor ?? null,
+          entryExitPoisSuggested: json.entryExitPoisSuggested ?? [],
         })
       )
       .catch((err) => setError(err.message));
@@ -355,5 +477,11 @@ export default function SMNTMapClient() {
     );
   }
 
-  return <MapContent data={data} />;
+  return (
+    <MapContent
+      data={data}
+      userEntryExitPois={userEntryExitPois}
+      onAddEntryExit={handleAddEntryExit}
+    />
+  );
 }
