@@ -1,19 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import along from "@turf/along";
 import bbox from "@turf/bbox";
-import buffer from "@turf/buffer";
 import { lineString } from "@turf/helpers";
+import type { MapRef } from "react-map-gl/mapbox";
+import Map, { Layer, Popup, Source } from "react-map-gl/mapbox";
+import "mapbox-gl/dist/mapbox-gl.css";
 
-// Leaflet CSS must be loaded on client
-import "leaflet/dist/leaflet.css";
-
-// import { sierraMadreExtent } from "@/lib/sierraMadreExtent"; // NSMNP commented out for now
 import { ElevationProfileOverlay } from "./ElevationProfileOverlay";
-import { MapBoundsController } from "./MapBoundsController";
-import { MapRotationControl } from "./MapRotationControl";
 
 type RouteRow = {
   id: string;
@@ -60,6 +55,30 @@ const ROUTE_COLORS: Record<string, string> = {
   not_passable: "#EF4444",
 };
 
+function RotateIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="pointer-events-none"
+    >
+      <path d="M21 2v6h-6" />
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M3 22v-6h6" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+    </svg>
+  );
+}
+
+const ENTRY_EXIT_POI_LAYER_ID = "entry-exit-pois-layer";
+
 function MapContent({
   data,
   userEntryExitPois,
@@ -69,31 +88,8 @@ function MapContent({
   userEntryExitPois: PoiRow[];
   onAddEntryExit: (distanceKm: number, elevationM: number) => void;
 }) {
-  const router = useRouter();
-  const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
-  const [MapContainer, setMapContainer] = useState<React.ComponentType<unknown> | null>(null);
-  const [GeoJSON, setGeoJSON] = useState<React.ComponentType<unknown> | null>(null);
-  const [TileLayer, setTileLayer] = useState<React.ComponentType<unknown> | null>(null);
-  const [CircleMarker, setCircleMarker] = useState<React.ComponentType<unknown> | null>(null);
-  const [Popup, setPopup] = useState<React.ComponentType<unknown> | null>(null);
-  const [Tooltip, setTooltip] = useState<React.ComponentType<unknown> | null>(null);
-
-  useEffect(() => {
-    void (async () => {
-      const leafletModule = await import("leaflet");
-      if (typeof window !== "undefined") {
-        (window as unknown as { L: unknown }).L = leafletModule.default ?? leafletModule;
-      }
-      await import("leaflet-rotate");
-      const L = await import("react-leaflet");
-      setMapContainer(L.MapContainer as React.ComponentType<unknown>);
-      setGeoJSON(L.GeoJSON as React.ComponentType<unknown>);
-      setTileLayer(L.TileLayer as React.ComponentType<unknown>);
-      setCircleMarker(L.CircleMarker as React.ComponentType<unknown>);
-      setPopup(L.Popup as React.ComponentType<unknown>);
-      setTooltip(L.Tooltip as React.ComponentType<unknown>);
-    })();
-  }, []);
+  const mapRef = useRef<MapRef | null>(null);
+  const [selectedPoi, setSelectedPoi] = useState<PoiRow | null>(null);
 
   const boundsBbox = useMemo((): [number, number, number, number] | null => {
     const main = data.routes?.find((r) => r.route_type === "main") ?? data.routes?.[0];
@@ -102,285 +98,283 @@ function MapContent({
     return bbox(line) as [number, number, number, number];
   }, [data.routes]);
 
-  const sectionFeatures = useMemo(
-    (): GeoJSON.FeatureCollection<GeoJSON.LineString> => ({
+  const routeFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
+    () => ({
       type: "FeatureCollection",
-      features: (data.sections || []).map((s) => ({
+      features: (data.routes || []).map((r) => ({
         type: "Feature" as const,
-        id: s.id,
-        properties: { slug: s.slug, sectionId: s.id, name: s.name },
-        geometry: s.geometry,
+        id: r.id,
+        properties: {
+          name: r.name,
+          route_type: r.route_type,
+          explorer_credits: r.explorer_credits,
+          opened_at: r.opened_at,
+        },
+        geometry: r.geometry,
       })),
     }),
-    [data.sections]
+    [data.routes]
   );
 
-  const SECTION_BUFFER_KM = 10;
-  const sectionPolygonFeatures = useMemo(
-    (): GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon> => {
-      const features: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>[] = [];
-      for (const s of data.sections || []) {
-        const line = lineString(s.geometry.coordinates);
-        const buffered = buffer(line, SECTION_BUFFER_KM, { units: "kilometers" });
-        const geom = buffered?.geometry;
-        if (!geom) continue;
-        features.push({
-          type: "Feature",
-          id: `poly-${s.id}`,
-          properties: { slug: s.slug, sectionId: s.id, name: s.name },
-          geometry: geom as GeoJSON.Polygon | GeoJSON.MultiPolygon,
+  const corridorFeatures: GeoJSON.FeatureCollection<GeoJSON.Polygon> = useMemo(
+    () =>
+      data.trailCorridor?.geometry
+        ? {
+          type: "FeatureCollection" as const,
+          features: [data.trailCorridor as GeoJSON.Feature<GeoJSON.Polygon>],
+        }
+        : { type: "FeatureCollection" as const, features: [] },
+    [data.trailCorridor]
+  );
+
+  const entryExitPois = useMemo(
+    () => [...(data.entryExitPoisSuggested ?? []), ...userEntryExitPois],
+    [data.entryExitPoisSuggested, userEntryExitPois]
+  );
+
+  const poiFeatures: GeoJSON.FeatureCollection<GeoJSON.Point> = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: entryExitPois.map((poi) => ({
+        type: "Feature" as const,
+        id: poi.id,
+        properties: {
+          id: poi.id,
+          name: poi.name,
+          description: poi.description ?? "",
+        },
+        geometry: poi.geometry,
+      })),
+    }),
+    [entryExitPois]
+  );
+
+  const onMapLoad = useCallback(() => {
+    const rawMap = mapRef.current?.getMap?.();
+    if (!rawMap || !boundsBbox) return;
+    const bounds: [[number, number], [number, number]] = [
+      [boundsBbox[0], boundsBbox[1]],
+      [boundsBbox[2], boundsBbox[3]],
+    ];
+    rawMap.fitBounds(bounds, { padding: 80, maxZoom: 8 });
+    rawMap.setMinZoom(3);
+    rawMap.setMaxZoom(12);
+    const pad = 2.5;
+    const maxBounds: [[number, number], [number, number]] = [
+      [boundsBbox[0] - pad, boundsBbox[1] - pad],
+      [boundsBbox[2] + pad, boundsBbox[3] + pad],
+    ];
+    rawMap.setMaxBounds(maxBounds);
+    requestAnimationFrame(() => {
+      rawMap.setBearing(90);
+    });
+  }, [boundsBbox]);
+
+  const onMapClick = useCallback(
+    (e: { point: { x: number; y: number }; defaultPrevented?: boolean }) => {
+      if (e.defaultPrevented) return;
+      const map = mapRef.current?.getMap?.();
+      if (!map) return;
+      const point: [number, number] = [e.point.x, e.point.y];
+      const features = map.queryRenderedFeatures(point, {
+        layers: [ENTRY_EXIT_POI_LAYER_ID],
+      });
+      if (features.length === 0) {
+        setSelectedPoi(null);
+        return;
+      }
+      const f = features[0];
+      const props = f.properties as { id?: string; name?: string; description?: string };
+      const coords = (f.geometry as GeoJSON.Point).coordinates;
+      const [lng, lat] = coords;
+      const poi = entryExitPois.find((p) => p.id === props?.id);
+      if (poi) {
+        setSelectedPoi(poi);
+      } else {
+        setSelectedPoi({
+          id: props?.id ?? "",
+          name: props?.name ?? "Entry/exit",
+          poi_type: "entry_exit",
+          description: props?.description ?? null,
+          geometry: { type: "Point", coordinates: [lng, lat] },
         });
       }
-      return { type: "FeatureCollection", features };
     },
-    [data.sections]
+    [entryExitPois]
   );
 
-  if (!MapContainer || !GeoJSON || !TileLayer || !CircleMarker || !Popup || !Tooltip) {
+  const onRotationClick = useCallback(() => {
+    const ref = mapRef.current;
+    if (!ref) return;
+    const map = ref.getMap?.();
+    if (!map) return;
+    const bearing = map.getBearing();
+    const isNear270 = bearing > 200 && bearing < 340;
+    const nextBearing = isNear270 ? 0 : 270;
+    requestAnimationFrame(() => {
+      map.setBearing(nextBearing);
+    });
+  }, []);
+
+  const onZoomIn = useCallback(() => {
+    mapRef.current?.getMap?.()?.zoomIn({ duration: 150 });
+  }, []);
+
+  const onZoomOut = useCallback(() => {
+    mapRef.current?.getMap?.()?.zoomOut({ duration: 150 });
+  }, []);
+
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  if (!token) {
     return (
       <div className="flex h-full min-h-[60vh] w-full items-center justify-center bg-[#0F1419] text-[#A3A3A3]">
-        Loading map…
+        Set NEXT_PUBLIC_MAPBOX_TOKEN to display the map.
       </div>
     );
   }
 
-  const routeFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = {
-    type: "FeatureCollection",
-    features: (data.routes || []).map((r) => ({
-      type: "Feature" as const,
-      id: r.id,
-      properties: {
-        name: r.name,
-        route_type: r.route_type,
-        explorer_credits: r.explorer_credits,
-        opened_at: r.opened_at,
-      },
-      geometry: r.geometry,
-    })),
-  };
-
-  const routeStyle = (feature?: GeoJSON.Feature<GeoJSON.LineString>) => {
-    const t = feature?.properties?.route_type ?? "main";
-    return {
-      color: ROUTE_COLORS[t] ?? "#22C55E",
-      weight: 5,
-      opacity: 0.9,
-    };
-  };
-
-  const onEachRouteFeature = (feature: GeoJSON.Feature<GeoJSON.LineString>, layer: L.Layer) => {
-    const props = feature?.properties as { name?: string; explorer_credits?: string[] } | undefined;
-    const name = props?.name ?? "Route";
-    const credits = Array.isArray(props?.explorer_credits) ? props.explorer_credits : [];
-    const label = credits.length > 0 ? `${name} · ${credits.join(", ")}` : name;
-    const l = layer as { bindTooltip?: (content: string, opts?: { sticky?: boolean; className?: string }) => unknown };
-    if (l?.bindTooltip) l.bindTooltip(label, { sticky: true, className: "map-route-tooltip" });
-  };
-
-  const sectionLineStyle = () => ({
-    color: "#22C55E",
-    weight: 4,
-    opacity: 0.9,
-  });
-
-  const onEachSectionLineFeature = (_feature: GeoJSON.Feature<GeoJSON.LineString>, _layer: L.Layer) => {
-    // Section lines are non-interactive; polygons handle click/hover
-  };
-
-  const sectionPolygonStyle = (feature?: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>) => {
-    const slug = (feature?.properties as { slug?: string })?.slug;
-    const hovered = slug != null && hoveredSectionId === slug;
-    return {
-      fillColor: "#22C55E",
-      fillOpacity: hovered ? 0.45 : 0.2,
-      color: hovered ? "#EA580C" : "#16A34A",
-      weight: hovered ? 3 : 1.5,
-      opacity: hovered ? 1 : 0.8,
-    };
-  };
-
-  const onEachSectionPolygonFeature = (
-    feature: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>,
-    layer: L.Layer
-  ) => {
-    const slug = (feature?.properties as { slug?: string })?.slug ?? "";
-    const name = (feature?.properties as { name?: string })?.name ?? "Section";
-    const l = layer as L.Layer & {
-      bindTooltip?: (content: string, opts?: { sticky?: boolean }) => void;
-      on?: (event: string, fn: () => void) => void;
-    };
-    if (l?.bindTooltip) l.bindTooltip(name, { sticky: true });
-    if (l?.on) {
-      l.on("click", () => router.push(`/sections/${slug}`));
-      l.on("mouseover", () => setHoveredSectionId(slug));
-      l.on("mouseout", () => setHoveredSectionId(null));
-    }
-  };
-
-  const MC = MapContainer as React.ComponentType<{
-    center: [number, number];
-    zoom: number;
-    className: string;
-    style: React.CSSProperties;
-    rotate?: boolean;
-    bearing?: number;
-    children: React.ReactNode;
-  }>;
-  const TL = TileLayer as React.ComponentType<{
-    attribution: string;
-    url: string;
-  }>;
-  const GJ = GeoJSON as React.ComponentType<{
-    data: GeoJSON.FeatureCollection<GeoJSON.LineString>;
-    style: (f?: GeoJSON.Feature<GeoJSON.LineString>) => { color: string; weight: number; opacity: number };
-    onEachFeature: (feature: GeoJSON.Feature<GeoJSON.LineString>, layer: L.Layer) => void;
-  }>;
-  const GJPolygon = GeoJSON as React.ComponentType<{
-    data: GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
-    style: () => {
-      fillColor: string;
-      fillOpacity: number;
-      color: string;
-      weight: number;
-      opacity: number;
-    };
-  }>;
-  const GJSections = GeoJSON as React.ComponentType<{
-    data: GeoJSON.FeatureCollection<GeoJSON.LineString>;
-    style: () => { color: string; weight: number; opacity: number };
-    onEachFeature: (feature: GeoJSON.Feature<GeoJSON.LineString>, layer: L.Layer) => void;
-  }>;
-  const GJSectionPolygons = GeoJSON as React.ComponentType<{
-    data: GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
-    style: (f?: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>) => {
-      fillColor: string;
-      fillOpacity: number;
-      color: string;
-      weight: number;
-      opacity: number;
-    };
-    onEachFeature: (
-      feature: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>,
-      layer: L.Layer
-    ) => void;
-  }>;
-
-  // Center on Sierra Madre trail (south 14.62°N to north 18.22°N; full range view)
-  const center: [number, number] = [16.4, 121.8];
-  const defaultZoom = 7;
-
   return (
-    <MC
-      center={center}
-      zoom={defaultZoom}
-      className="h-full w-full"
-      style={{ height: "100%", minHeight: "60vh" }}
-      rotate={true}
-      bearing={270}
-    >
-      <MapBoundsController bbox={boundsBbox} />
-      <TL
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      {/* NSMNP terrain polygon commented out for now
-      <GJPolygon
-        data={sierraMadreExtent}
-        style={() => ({
-          fillColor: "#22C55E",
-          fillOpacity: 0.3,
-          color: "#16A34A",
-          weight: 1.5,
-          opacity: 0.9,
-        })}
-      />
-      */}
-      <MapRotationControl />
-      {data.trailCorridor?.geometry && (
-        <GJPolygon
-          data={{
-            type: "FeatureCollection",
-            features: [data.trailCorridor],
+    <div className="relative h-full w-full" style={{ minHeight: "60vh" }}>
+      <Map
+        ref={mapRef}
+        mapboxAccessToken={token}
+        initialViewState={{
+          longitude: 121.8,
+          latitude: 16.4,
+          zoom: 7.5,
+        }}
+        mapStyle="mapbox://styles/mapbox/outdoors-v12"
+        onLoad={onMapLoad}
+        onClick={onMapClick}
+        style={{ width: "100%", height: "100%" }}
+        interactiveLayerIds={[ENTRY_EXIT_POI_LAYER_ID]}
+        cursor={undefined}
+      >
+        {corridorFeatures.features.length > 0 && (
+          <Source id="corridor" type="geojson" data={corridorFeatures}>
+            <Layer
+              id="corridor-fill"
+              type="fill"
+              paint={{
+                "fill-color": "#22C55E",
+                "fill-opacity": 0.15,
+              }}
+            />
+            <Layer
+              id="corridor-line"
+              type="line"
+              paint={{
+                "line-color": "#16A34A",
+                "line-width": 1,
+                "line-opacity": 0.7,
+              }}
+            />
+          </Source>
+        )}
+        <Source id="route" type="geojson" data={routeFeatures}>
+          <Layer
+            id="route-line"
+            type="line"
+            paint={{
+              "line-color": [
+                "match",
+                ["get", "route_type"],
+                "main",
+                ROUTE_COLORS.main,
+                "exit",
+                ROUTE_COLORS.exit,
+                "not_passable",
+                ROUTE_COLORS.not_passable,
+                ROUTE_COLORS.main,
+              ],
+              "line-width": 5,
+              "line-opacity": 0.9,
+            }}
+          />
+        </Source>
+        <Source id="entry-exit-pois" type="geojson" data={poiFeatures}>
+          <Layer
+            id={ENTRY_EXIT_POI_LAYER_ID}
+            type="circle"
+            paint={{
+              "circle-radius": 8,
+              "circle-color": "#F97316",
+              "circle-stroke-color": "#EA580C",
+              "circle-stroke-width": 2,
+            }}
+          />
+        </Source>
+        {selectedPoi && (
+          <Popup
+            longitude={selectedPoi.geometry.coordinates[0]}
+            latitude={selectedPoi.geometry.coordinates[1]}
+            onClose={() => setSelectedPoi(null)}
+            closeButton
+            closeOnClick={false}
+          >
+            <div className="min-w-[140px]">
+              <strong>{selectedPoi.name}</strong>
+              {selectedPoi.description && (
+                <p className="mt-1 text-sm">{selectedPoi.description}</p>
+              )}
+            </div>
+          </Popup>
+        )}
+      </Map>
+      <div className="absolute left-2 top-2 z-100 flex flex-col gap-1">
+        <button
+          type="button"
+          title="Zoom in"
+          aria-label="Zoom in"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded bg-white text-[#333] shadow hover:bg-gray-100"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onZoomIn();
           }}
-          style={() => ({
-            fillColor: "#22C55E",
-            fillOpacity: 0.15,
-            color: "#16A34A",
-            weight: 1,
-            opacity: 0.7,
-          })}
-        />
-      )}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none">
+            <line x1={12} y1={5} x2={12} y2={19} />
+            <line x1={5} y1={12} x2={19} y2={12} />
+          </svg>
+        </button>
+        <button
+          type="button"
+          title="Zoom out"
+          aria-label="Zoom out"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded bg-white text-[#333] shadow hover:bg-gray-100"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onZoomOut();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none">
+            <line x1={5} y1={12} x2={19} y2={12} />
+          </svg>
+        </button>
+        <button
+          type="button"
+          title="Rotate map: 270° (North left) or 0° (North up)"
+          aria-label="Toggle map rotation 270° / 0°"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded bg-white text-[#333] shadow hover:bg-gray-100"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRotationClick();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <RotateIcon />
+        </button>
+      </div>
       <ElevationProfileOverlay
         trailProfile={data.trailProfile ?? null}
         onAddEntryExit={onAddEntryExit}
       />
-      <GJ data={routeFeatures} style={routeStyle} onEachFeature={onEachRouteFeature} />
-      {[...(data.entryExitPoisSuggested ?? []), ...userEntryExitPois].map((poi) => {
-        const coords = poi.geometry.coordinates;
-        const [lng, lat] = coords;
-        const CM = CircleMarker as React.ComponentType<{
-          center: [number, number];
-          radius: number;
-          pathOptions?: { color: string; fillColor: string; fillOpacity: number; weight: number };
-          children: React.ReactNode;
-        }>;
-        const P = Popup as React.ComponentType<{ children: React.ReactNode }>;
-        return (
-          <CM
-            key={poi.id}
-            center={[lat, lng]}
-            radius={8}
-            pathOptions={{ color: "#EA580C", fillColor: "#F97316", fillOpacity: 0.9, weight: 2 }}
-          >
-            <P>
-              <strong>{poi.name}</strong>
-              {poi.description && <p className="mt-1 text-sm">{poi.description}</p>}
-            </P>
-          </CM>
-        );
-      })}
-      {/* Interactive section polygons and other POIs commented out
-      {sectionFeatures.features.length > 0 && (
-        <GJSections
-          data={sectionFeatures}
-          style={sectionLineStyle}
-          onEachFeature={onEachSectionLineFeature}
-        />
-      )}
-      {sectionPolygonFeatures.features.length > 0 && (
-        <GJSectionPolygons
-          data={sectionPolygonFeatures}
-          style={sectionPolygonStyle}
-          onEachFeature={onEachSectionPolygonFeature}
-        />
-      )}
-      {(data.pois || []).map((poi) => {
-        const coords = poi.geometry.coordinates;
-        const [lng, lat] = coords;
-        const CM = CircleMarker as React.ComponentType<{
-          center: [number, number];
-          radius: number;
-          pathOptions?: { color: string; fillColor: string; fillOpacity: number; weight: number };
-          children: React.ReactNode;
-        }>;
-        const P = Popup as React.ComponentType<{ children: React.ReactNode }>;
-        return (
-          <CM
-            key={poi.id}
-            center={[lat, lng]}
-            radius={8}
-            pathOptions={{ color: "#0D9488", fillColor: "#2DD4BF", fillOpacity: 0.9, weight: 2 }}
-          >
-            <P>
-              <strong>{poi.name}</strong>
-              {poi.description && <p className="mt-1 text-sm">{poi.description}</p>}
-            </P>
-          </CM>
-        );
-      })}
-      */}
-    </MC>
+    </div>
   );
 }
 
@@ -393,7 +387,7 @@ function loadUserEntryExitPois(): PoiRow[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (p): p is PoiRow =>
-        p &&
+        !!p &&
         typeof p === "object" &&
         typeof (p as PoiRow).id === "string" &&
         typeof (p as PoiRow).name === "string" &&
@@ -445,7 +439,8 @@ export default function SMNTMapClient() {
   useEffect(() => {
     fetch("/api/map")
       .then((res) => {
-        if (!res.ok) throw new Error(res.status === 503 ? "Database not configured" : "Failed to load map");
+        if (!res.ok)
+          throw new Error(res.status === 503 ? "Database not configured" : "Failed to load map");
         return res.json();
       })
       .then((json) =>

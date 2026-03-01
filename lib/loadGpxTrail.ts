@@ -29,7 +29,7 @@ export type EntryExitPoiRow = {
 let cached: GeoJSON.LineString | null | undefined = undefined;
 let profileCache: { distances: number[]; elevations: number[] } | null | undefined = undefined;
 let corridorCache: GeoJSON.Feature<GeoJSON.Polygon> | null | undefined = undefined;
-let entryExitSuggestedCache: EntryExitPoiRow[] | null | undefined = undefined;
+let entryExitSuggestedCache: EntryExitPoiRow[] | undefined = undefined;
 
 /**
  * Returns the main track from the GPX file as a single LineString, or null if missing/failed.
@@ -159,8 +159,9 @@ export function getEntryExitPoisSuggested(): EntryExitPoiRow[] {
   const profile = getGpxProfile();
   const line = getGpxMainRouteGeometry();
   if (!profile?.distances?.length || !line?.coordinates?.length) {
-    entryExitSuggestedCache = [];
-    return [];
+    const empty: EntryExitPoiRow[] = [];
+    entryExitSuggestedCache = empty;
+    return empty;
   }
 
   const { distances, elevations } = profile;
