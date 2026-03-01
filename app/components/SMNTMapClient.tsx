@@ -90,6 +90,7 @@ function MapContent({
 }) {
   const mapRef = useRef<MapRef | null>(null);
   const [selectedPoi, setSelectedPoi] = useState<PoiRow | null>(null);
+  const [mapInfo, setMapInfo] = useState<{ zoom: number; bounds: string } | null>(null);
 
   const boundsBbox = useMemo((): [number, number, number, number] | null => {
     const main = data.routes?.find((r) => r.route_type === "main") ?? data.routes?.[0];
@@ -149,6 +150,18 @@ function MapContent({
     [entryExitPois]
   );
 
+  const updateMapInfo = useCallback(() => {
+    const rawMap = mapRef.current?.getMap?.();
+    if (!rawMap) return;
+    const zoom = rawMap.getZoom();
+    const b = rawMap.getBounds();
+    if (!b) return;
+    const sw = b.getSouthWest();
+    const ne = b.getNorthEast();
+    const boundsStr = `[${sw.lng.toFixed(4)}, ${sw.lat.toFixed(4)}, ${ne.lng.toFixed(4)}, ${ne.lat.toFixed(4)}]`;
+    setMapInfo({ zoom, bounds: boundsStr });
+  }, []);
+
   const onMapLoad = useCallback(() => {
     const rawMap = mapRef.current?.getMap?.();
     if (!rawMap || !boundsBbox) return;
@@ -167,8 +180,9 @@ function MapContent({
     rawMap.setMaxBounds(maxBounds);
     requestAnimationFrame(() => {
       rawMap.setBearing(90);
+      updateMapInfo();
     });
-  }, [boundsBbox]);
+  }, [boundsBbox, updateMapInfo]);
 
   const onMapClick = useCallback(
     (e: { point: { x: number; y: number }; defaultPrevented?: boolean }) => {
@@ -241,11 +255,12 @@ function MapContent({
         initialViewState={{
           longitude: 121.8,
           latitude: 16.4,
-          zoom: 7.5,
+          zoom: 8.10,
           bearing: 90,
         }}
         mapStyle="mapbox://styles/mapbox/outdoors-v12"
         onLoad={onMapLoad}
+        onMoveEnd={updateMapInfo}
         onClick={onMapClick}
         style={{ width: "100%", height: "100%" }}
         interactiveLayerIds={[ENTRY_EXIT_POI_LAYER_ID]}
@@ -375,6 +390,12 @@ function MapContent({
         trailProfile={data.trailProfile ?? null}
         onAddEntryExit={onAddEntryExit}
       />
+      {mapInfo && (
+        <div className="absolute bottom-2 right-2 z-100 max-w-[280px] rounded bg-white/95 px-2 py-1.5 font-mono text-[10px] text-stone-600 shadow">
+          <div>Zoom: {mapInfo.zoom.toFixed(2)}</div>
+          <div className="truncate" title={mapInfo.bounds}>Bounds: {mapInfo.bounds}</div>
+        </div>
+      )}
     </div>
   );
 }
