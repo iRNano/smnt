@@ -73,21 +73,12 @@ function MapContent({ data }: { data: MapData }) {
     })();
   }, []);
 
-  const bufferPolygon = useMemo(() => {
+  const boundsBbox = useMemo((): [number, number, number, number] | null => {
     const main = data.routes?.find((r) => r.route_type === "main") ?? data.routes?.[0];
     if (!main?.geometry?.coordinates?.length) return null;
     const line = lineString(main.geometry.coordinates);
-    const buffered = buffer(line, 25, { units: "kilometers" });
-    return {
-      type: "FeatureCollection" as const,
-      features: [buffered as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>],
-    };
+    return bbox(line) as [number, number, number, number];
   }, [data.routes]);
-
-  const boundsBbox = useMemo((): [number, number, number, number] | null => {
-    if (!bufferPolygon?.features?.length) return null;
-    return bbox(bufferPolygon.features[0]!) as [number, number, number, number];
-  }, [bufferPolygon]);
 
   const sectionFeatures = useMemo(
     (): GeoJSON.FeatureCollection<GeoJSON.LineString> => ({
@@ -98,6 +89,27 @@ function MapContent({ data }: { data: MapData }) {
         properties: { slug: s.slug, sectionId: s.id, name: s.name },
         geometry: s.geometry,
       })),
+    }),
+    [data.sections]
+  );
+
+  const SECTION_BUFFER_KM = 10;
+  const sectionPolygonFeatures = useMemo(
+    (): GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon> => ({
+      type: "FeatureCollection",
+      features: (data.sections || [])
+        .map((s) => {
+          const line = lineString(s.geometry.coordinates);
+          const buffered = buffer(line, SECTION_BUFFER_KM, { units: "kilometers" });
+          const geom = buffered.geometry ?? (buffered as unknown as GeoJSON.Polygon);
+          return {
+            type: "Feature" as const,
+            id: `poly-${s.id}`,
+            properties: { slug: s.slug, sectionId: s.id, name: s.name },
+            geometry: geom as GeoJSON.Polygon | GeoJSON.MultiPolygon,
+          };
+        })
+        .filter((f): f is GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> => f.geometry != null),
     }),
     [data.sections]
   );
@@ -143,17 +155,32 @@ function MapContent({ data }: { data: MapData }) {
     if (l?.bindTooltip) l.bindTooltip(label, { sticky: true, className: "map-route-tooltip" });
   };
 
-  const sectionStyle = (feature?: GeoJSON.Feature<GeoJSON.LineString>) => {
+  const sectionLineStyle = () => ({
+    color: "#22C55E",
+    weight: 4,
+    opacity: 0.9,
+  });
+
+  const onEachSectionLineFeature = (_feature: GeoJSON.Feature<GeoJSON.LineString>, _layer: L.Layer) => {
+    // Section lines are non-interactive; polygons handle click/hover
+  };
+
+  const sectionPolygonStyle = (feature?: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>) => {
     const slug = (feature?.properties as { slug?: string })?.slug;
     const hovered = slug != null && hoveredSectionId === slug;
     return {
-      color: "#22C55E",
-      weight: hovered ? 8 : 5,
-      opacity: hovered ? 1 : 0.85,
+      fillColor: "#22C55E",
+      fillOpacity: hovered ? 0.45 : 0.2,
+      color: hovered ? "#EA580C" : "#16A34A",
+      weight: hovered ? 3 : 1.5,
+      opacity: hovered ? 1 : 0.8,
     };
   };
 
-  const onEachSectionFeature = (feature: GeoJSON.Feature<GeoJSON.LineString>, layer: L.Layer) => {
+  const onEachSectionPolygonFeature = (
+    feature: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>,
+    layer: L.Layer
+  ) => {
     const slug = (feature?.properties as { slug?: string })?.slug ?? "";
     const name = (feature?.properties as { name?: string })?.name ?? "Section";
     const l = layer as L.Layer & {
@@ -186,20 +213,24 @@ function MapContent({ data }: { data: MapData }) {
     style: (f?: GeoJSON.Feature<GeoJSON.LineString>) => { color: string; weight: number; opacity: number };
     onEachFeature: (feature: GeoJSON.Feature<GeoJSON.LineString>, layer: L.Layer) => void;
   }>;
-  const GJPolygon = GeoJSON as React.ComponentType<{
+  const GJSections = GeoJSON as React.ComponentType<{
+    data: GeoJSON.FeatureCollection<GeoJSON.LineString>;
+    style: () => { color: string; weight: number; opacity: number };
+    onEachFeature: (feature: GeoJSON.Feature<GeoJSON.LineString>, layer: L.Layer) => void;
+  }>;
+  const GJSectionPolygons = GeoJSON as React.ComponentType<{
     data: GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
-    style: () => {
+    style: (f?: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>) => {
       fillColor: string;
       fillOpacity: number;
       color: string;
       weight: number;
       opacity: number;
     };
-  }>;
-  const GJSections = GeoJSON as React.ComponentType<{
-    data: GeoJSON.FeatureCollection<GeoJSON.LineString>;
-    style: (f?: GeoJSON.Feature<GeoJSON.LineString>) => { color: string; weight: number; opacity: number };
-    onEachFeature: (feature: GeoJSON.Feature<GeoJSON.LineString>, layer: L.Layer) => void;
+    onEachFeature: (
+      feature: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>,
+      layer: L.Layer
+    ) => void;
   }>;
 
   // Center on Sierra Madre trail (south 14.62°N to north 18.22°N; full range view)
@@ -213,31 +244,26 @@ function MapContent({ data }: { data: MapData }) {
       className="h-full w-full"
       style={{ height: "100%", minHeight: "60vh" }}
       rotate={true}
-      bearing={90}
+      bearing={270}
     >
       <MapBoundsController bbox={boundsBbox} />
       <TL
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {bufferPolygon && (
-        <GJPolygon
-          data={bufferPolygon}
-          style={() => ({
-            fillColor: "#22C55E",
-            fillOpacity: 0.35,
-            color: "#EA580C",
-            weight: 2,
-            opacity: 0.9,
-          })}
-        />
-      )}
       <GJ data={routeFeatures} style={routeStyle} onEachFeature={onEachRouteFeature} />
       {sectionFeatures.features.length > 0 && (
         <GJSections
           data={sectionFeatures}
-          style={sectionStyle}
-          onEachFeature={onEachSectionFeature}
+          style={sectionLineStyle}
+          onEachFeature={onEachSectionLineFeature}
+        />
+      )}
+      {sectionPolygonFeatures.features.length > 0 && (
+        <GJSectionPolygons
+          data={sectionPolygonFeatures}
+          style={sectionPolygonStyle}
+          onEachFeature={onEachSectionPolygonFeature}
         />
       )}
       {(data.pois || []).map((poi) => {
