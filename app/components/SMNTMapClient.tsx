@@ -50,9 +50,9 @@ type MapData = {
 const ENTRY_EXIT_POIS_STORAGE_KEY = "smnt-entry-exit-pois";
 
 const ROUTE_COLORS: Record<string, string> = {
-  main: "#22C55E",
-  exit: "#F97316",
-  not_passable: "#EF4444",
+  main: "#92400E",
+  exit: "#C2410C",
+  not_passable: "#991B1B",
 };
 
 function RotateIcon() {
@@ -272,15 +272,15 @@ function MapContent({
               id="corridor-fill"
               type="fill"
               paint={{
-                "fill-color": "#22C55E",
-                "fill-opacity": 0.15,
+                "fill-color": "#78716c",
+                "fill-opacity": 0.14,
               }}
             />
             <Layer
               id="corridor-line"
               type="line"
               paint={{
-                "line-color": "#16A34A",
+                "line-color": "#57534e",
                 "line-width": 1,
                 "line-opacity": 0.7,
               }}
@@ -314,8 +314,8 @@ function MapContent({
             type="circle"
             paint={{
               "circle-radius": 8,
-              "circle-color": "#F97316",
-              "circle-stroke-color": "#EA580C",
+              "circle-color": "#C2410C",
+              "circle-stroke-color": "#9A3412",
               "circle-stroke-width": 2,
             }}
           />
