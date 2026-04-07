@@ -98,7 +98,7 @@ export function ElevationProfileOverlay({ trailProfile, onAddEntryExit }: Props)
 
   return (
     <div
-      className="leaflet-control leaflet-bar absolute bottom-2 left-2 z-1000 rounded bg-white/95 p-1 shadow"
+      className="leaflet-control leaflet-bar absolute bottom-4 left-4 z-1000 rounded bg-white/95 p-1 shadow"
       aria-label="Elevation profile"
     >
       <div className="text-[10px] font-medium text-stone-600">Elevation (m)</div>

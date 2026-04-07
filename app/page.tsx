@@ -29,8 +29,10 @@ export default function Home() {
           </a>
         </div>
       </div>
-      <div className="h-[60vh] w-full relative shrink-0">
-        <SMNTMapDynamic />
+      <div className="relative w-full shrink-0 px-4 py-4 md:px-6 md:py-5">
+        <div className="min-h-[60vh] w-full max-w-[1600px] mx-auto">
+          <SMNTMapDynamic />
+        </div>
       </div>
       <div className="bg-[#1A1F26] border-t border-[#2D3748] px-6 py-4 flex flex-wrap items-center gap-6 text-sm">
         <span className="flex items-center gap-2 text-[#F5F5F5]">

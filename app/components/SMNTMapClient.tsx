@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import along from "@turf/along";
 import bbox from "@turf/bbox";
-import { lineString } from "@turf/helpers";
+import length from "@turf/length";
+import nearestPointOnLine from "@turf/nearest-point-on-line";
+import { lineString, point } from "@turf/helpers";
 import type { MapRef } from "react-map-gl/mapbox";
-import Map, { Layer, Popup, Source } from "react-map-gl/mapbox";
+import Map, { Layer, Marker, Popup, Source } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 import { ElevationProfileOverlay } from "./ElevationProfileOverlay";
@@ -78,6 +80,38 @@ function RotateIcon() {
 }
 
 const ENTRY_EXIT_POI_LAYER_ID = "entry-exit-pois-layer";
+const FOLLOW_MAP_ZOOM = 13;
+const DRAG_THROTTLE_MS = 24;
+
+function RouteCursorMarker({
+  longitude,
+  latitude,
+  onDrag,
+}: {
+  longitude: number;
+  latitude: number;
+  onDrag: (lng: number, lat: number) => void;
+}) {
+  const lastDragTs = useRef(0);
+  const handleDrag = useCallback(
+    (e: { lngLat: { lng: number; lat: number } }) => {
+      const now = performance.now();
+      if (now - lastDragTs.current < DRAG_THROTTLE_MS) return;
+      lastDragTs.current = now;
+      onDrag(e.lngLat.lng, e.lngLat.lat);
+    },
+    [onDrag]
+  );
+  return (
+    <Marker longitude={longitude} latitude={latitude} anchor="center" draggable onDrag={handleDrag}>
+      <div
+        className="flex h-5 w-5 cursor-grab items-center justify-center rounded-full border-2 border-white bg-[#EA580C] shadow-md active:cursor-grabbing"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </Marker>
+  );
+}
 
 function MapContent({
   data,
@@ -149,6 +183,79 @@ function MapContent({
     }),
     [entryExitPois]
   );
+
+  const mainRoute = useMemo(
+    () => data.routes?.find((r) => r.route_type === "main") ?? data.routes?.[0] ?? null,
+    [data.routes]
+  );
+
+  const mainLine = useMemo(() => {
+    if (!mainRoute?.geometry?.coordinates?.length) return null;
+    return lineString(mainRoute.geometry.coordinates);
+  }, [mainRoute]);
+
+  const routeLengthKm = useMemo(() => {
+    if (!mainLine) return 0;
+    return length(mainLine, { units: "kilometers" });
+  }, [mainLine]);
+
+  const [cursorKm, setCursorKm] = useState(0);
+
+  useEffect(() => {
+    if (routeLengthKm <= 0) return;
+    setCursorKm((prev) => {
+      if (prev > 0 && prev <= routeLengthKm) return prev;
+      return routeLengthKm / 2;
+    });
+  }, [routeLengthKm]);
+
+  const cursorPoint = useMemo(() => {
+    if (!mainLine || routeLengthKm <= 0) return null;
+    const km = Math.max(0, Math.min(routeLengthKm, cursorKm));
+    try {
+      return along(mainLine, km, { units: "kilometers" });
+    } catch {
+      return null;
+    }
+  }, [mainLine, routeLengthKm, cursorKm]);
+
+  const snapDragToRoute = useCallback(
+    (lng: number, lat: number) => {
+      if (!mainLine || routeLengthKm <= 0) return;
+      const snapped = nearestPointOnLine(mainLine, point([lng, lat]), { units: "kilometers" });
+      const loc = snapped.properties.location;
+      const km = typeof loc === "number" ? loc : (snapped.properties as { totalDistance?: number }).totalDistance ?? 0;
+      if (typeof km !== "number" || Number.isNaN(km)) return;
+      setCursorKm(Math.max(0, Math.min(routeLengthKm, km)));
+    },
+    [mainLine, routeLengthKm]
+  );
+
+  const setCursorKmClamped = useCallback(
+    (km: number) => {
+      if (routeLengthKm <= 0) return;
+      setCursorKm(Math.max(0, Math.min(routeLengthKm, km)));
+    },
+    [routeLengthKm]
+  );
+
+  const followMapRef = useRef<MapRef | null>(null);
+
+  const cursorLngLat = useMemo(() => {
+    if (!cursorPoint?.geometry?.coordinates?.length) return null;
+    const [lng, lat] = cursorPoint.geometry.coordinates;
+    return { lng, lat };
+  }, [cursorPoint]);
+
+  useEffect(() => {
+    if (!cursorLngLat) return;
+    const raw = followMapRef.current?.getMap?.();
+    if (!raw) return;
+    raw.jumpTo({
+      center: [cursorLngLat.lng, cursorLngLat.lat],
+      zoom: FOLLOW_MAP_ZOOM,
+    });
+  }, [cursorLngLat]);
 
   const updateMapInfo = useCallback(() => {
     const rawMap = mapRef.current?.getMap?.();
@@ -247,25 +354,28 @@ function MapContent({
     );
   }
 
+  const showRouteCursor = Boolean(mainLine && routeLengthKm > 0 && cursorLngLat);
+
   return (
-    <div className="relative h-full w-full" style={{ minHeight: "60vh" }}>
-      <Map
-        ref={mapRef}
-        mapboxAccessToken={token}
-        initialViewState={{
-          longitude: 121.8,
-          latitude: 16.4,
-          zoom: 8.10,
-          bearing: 90,
-        }}
-        mapStyle="mapbox://styles/mapbox/outdoors-v12"
-        onLoad={onMapLoad}
-        onMoveEnd={updateMapInfo}
-        onClick={onMapClick}
-        style={{ width: "100%", height: "100%" }}
-        interactiveLayerIds={[ENTRY_EXIT_POI_LAYER_ID]}
-        cursor={undefined}
-      >
+    <div className="flex h-full w-full min-h-[calc(60vh+240px)] flex-col gap-4">
+      <div className="relative min-h-[40vh] flex-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+        <Map
+          ref={mapRef}
+          mapboxAccessToken={token}
+          initialViewState={{
+            longitude: 121.8,
+            latitude: 16.4,
+            zoom: 8.10,
+            bearing: 90,
+          }}
+          mapStyle="mapbox://styles/mapbox/outdoors-v12"
+          onLoad={onMapLoad}
+          onMoveEnd={updateMapInfo}
+          onClick={onMapClick}
+          style={{ width: "100%", height: "100%" }}
+          interactiveLayerIds={[ENTRY_EXIT_POI_LAYER_ID]}
+          cursor={undefined}
+        >
         {corridorFeatures.features.length > 0 && (
           <Source id="corridor" type="geojson" data={corridorFeatures}>
             <Layer
@@ -320,6 +430,13 @@ function MapContent({
             }}
           />
         </Source>
+        {showRouteCursor && cursorLngLat && (
+          <RouteCursorMarker
+            longitude={cursorLngLat.lng}
+            latitude={cursorLngLat.lat}
+            onDrag={snapDragToRoute}
+          />
+        )}
         {selectedPoi && (
           <Popup
             longitude={selectedPoi.geometry.coordinates[0]}
@@ -389,11 +506,102 @@ function MapContent({
       <ElevationProfileOverlay
         trailProfile={data.trailProfile ?? null}
         onAddEntryExit={onAddEntryExit}
+        cursorDistanceKm={showRouteCursor ? cursorKm : undefined}
+        onCursorChangeKm={showRouteCursor ? setCursorKmClamped : undefined}
       />
       {mapInfo && (
-        <div className="absolute bottom-2 right-2 z-100 max-w-[280px] rounded bg-white/95 px-2 py-1.5 font-mono text-[10px] text-stone-600 shadow">
+        <div className="absolute bottom-4 right-4 z-100 max-w-[280px] rounded bg-white/95 px-2 py-1.5 font-mono text-[10px] text-stone-600 shadow">
           <div>Zoom: {mapInfo.zoom.toFixed(2)}</div>
           <div className="truncate" title={mapInfo.bounds}>Bounds: {mapInfo.bounds}</div>
+        </div>
+      )}
+      </div>
+
+      {showRouteCursor && cursorLngLat && (
+        <div className="relative h-[240px] w-full shrink-0 border-t border-stone-300">
+          <Map
+            ref={followMapRef}
+            mapboxAccessToken={token}
+            initialViewState={{
+              longitude: cursorLngLat.lng,
+              latitude: cursorLngLat.lat,
+              zoom: FOLLOW_MAP_ZOOM,
+              bearing: 0,
+            }}
+            mapStyle="mapbox://styles/mapbox/outdoors-v12"
+            style={{ width: "100%", height: "100%" }}
+            dragPan={false}
+            scrollZoom={false}
+            doubleClickZoom={false}
+            boxZoom={false}
+            dragRotate={false}
+            touchZoomRotate={false}
+            keyboard={false}
+            attributionControl={false}
+          >
+            {corridorFeatures.features.length > 0 && (
+              <Source id="corridor-follow" type="geojson" data={corridorFeatures}>
+                <Layer
+                  id="corridor-fill-follow"
+                  type="fill"
+                  paint={{
+                    "fill-color": "#78716c",
+                    "fill-opacity": 0.14,
+                  }}
+                />
+                <Layer
+                  id="corridor-line-follow"
+                  type="line"
+                  paint={{
+                    "line-color": "#57534e",
+                    "line-width": 1,
+                    "line-opacity": 0.7,
+                  }}
+                />
+              </Source>
+            )}
+            <Source id="route-follow" type="geojson" data={routeFeatures}>
+              <Layer
+                id="route-line-follow"
+                type="line"
+                paint={{
+                  "line-color": [
+                    "match",
+                    ["get", "route_type"],
+                    "main",
+                    ROUTE_COLORS.main,
+                    "exit",
+                    ROUTE_COLORS.exit,
+                    "not_passable",
+                    ROUTE_COLORS.not_passable,
+                    ROUTE_COLORS.main,
+                  ],
+                  "line-width": 5,
+                  "line-opacity": 0.9,
+                }}
+              />
+            </Source>
+            <Source id="entry-exit-pois-follow" type="geojson" data={poiFeatures}>
+              <Layer
+                id="entry-exit-pois-layer-follow"
+                type="circle"
+                paint={{
+                  "circle-radius": 8,
+                  "circle-color": "#C2410C",
+                  "circle-stroke-color": "#9A3412",
+                  "circle-stroke-width": 2,
+                }}
+              />
+            </Source>
+            <RouteCursorMarker
+              longitude={cursorLngLat.lng}
+              latitude={cursorLngLat.lat}
+              onDrag={snapDragToRoute}
+            />
+          </Map>
+          <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-md bg-white/95 px-2.5 py-1.5 text-[10px] font-medium text-stone-600 shadow">
+            Route detail (follows cursor)
+          </div>
         </div>
       )}
     </div>
