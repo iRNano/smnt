@@ -13,7 +13,7 @@ const SMNTMapClient = dynamic(() => import("./SMNTMapClient"), {
 
 export function SMNTMapDynamic() {
   return (
-    <div className="h-full w-full min-h-[60vh]">
+    <div className="w-full">
       <SMNTMapClient />
     </div>
   );

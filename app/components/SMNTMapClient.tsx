@@ -357,8 +357,9 @@ function MapContent({
   const showRouteCursor = Boolean(mainLine && routeLengthKm > 0 && cursorLngLat);
 
   return (
-    <div className="flex h-full w-full min-h-[calc(60vh+240px)] flex-col gap-4">
-      <div className="relative min-h-[40vh] flex-1 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+    <div className="flex w-full flex-col gap-4">
+      {/* Explicit height required: flex-1 + h-full parents collapse to 0, hiding the Map canvas */}
+      <div className="relative h-[60vh] min-h-[320px] w-full overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
         <Map
           ref={mapRef}
           mapboxAccessToken={token}
@@ -518,7 +519,7 @@ function MapContent({
       </div>
 
       {showRouteCursor && cursorLngLat && (
-        <div className="relative h-[240px] w-full shrink-0 border-t border-stone-300">
+        <div className="relative h-[240px] w-full shrink-0 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
           <Map
             ref={followMapRef}
             mapboxAccessToken={token}

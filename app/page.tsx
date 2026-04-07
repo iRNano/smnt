@@ -30,7 +30,7 @@ export default function Home() {
         </div>
       </div>
       <div className="relative w-full shrink-0 px-4 py-4 md:px-6 md:py-5">
-        <div className="min-h-[60vh] w-full max-w-[1600px] mx-auto">
+        <div className="w-full max-w-[1600px] mx-auto min-h-[calc(60vh+240px+1rem)]">
           <SMNTMapDynamic />
         </div>
       </div>
