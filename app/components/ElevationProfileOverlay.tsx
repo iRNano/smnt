@@ -11,13 +11,48 @@ export type TrailProfile = { distances: number[]; elevations: number[] } | null;
 type Props = {
   trailProfile: TrailProfile;
   onAddEntryExit?: (distanceKm: number, elevationM: number) => void;
+  /** When set, draws a persistent cursor line synced with the route (km along trail). */
+  cursorDistanceKm?: number;
+  /** Click or drag on the chart to move the route cursor (km along trail). */
+  onCursorChangeKm?: (km: number) => void;
 };
+
+function distanceIndexFromClientX(
+  trailProfile: NonNullable<TrailProfile>,
+  clientX: number,
+  svgEl: SVGSVGElement
+): { distance: number; elevation: number; index: number } {
+  const rect = svgEl.getBoundingClientRect();
+  const x = clientX - rect.left - PAD.left;
+  const innerW = WIDTH - PAD.left - PAD.right;
+  const maxD = trailProfile.distances[trailProfile.distances.length - 1] ?? 0;
+  if (maxD === 0 || innerW <= 0) {
+    return {
+      distance: trailProfile.distances[0]!,
+      elevation: trailProfile.elevations[0]!,
+      index: 0,
+    };
+  }
+  const t = Math.max(0, Math.min(1, x / innerW));
+  const idx = Math.floor(t * (trailProfile.distances.length - 1));
+  const i = Math.min(idx, trailProfile.distances.length - 1);
+  return {
+    distance: trailProfile.distances[i]!,
+    elevation: trailProfile.elevations[i]!,
+    index: i,
+  };
+}
 
 /**
  * Elevation profile chart (distance km vs elevation m) as an overlay below the map controls.
  * Hover shows distance and elevation.
  */
-export function ElevationProfileOverlay({ trailProfile, onAddEntryExit }: Props) {
+export function ElevationProfileOverlay({
+  trailProfile,
+  onAddEntryExit,
+  cursorDistanceKm,
+  onCursorChangeKm,
+}: Props) {
   const [hover, setHover] = useState<{ distance: number; elevation: number } | null>(null);
 
   const { pathD, pathArea, scaleX, scaleY, minEle, maxEle, maxDist, rangeE, yTicks } = useMemo(() => {
@@ -61,34 +96,34 @@ export function ElevationProfileOverlay({ trailProfile, onAddEntryExit }: Props)
   const onMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       if (!trailProfile?.distances?.length || maxDist === 0) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left - PAD.left;
-      const innerW = WIDTH - PAD.left - PAD.right;
-      const t = Math.max(0, Math.min(1, x / innerW));
-      const idx = Math.floor(t * (trailProfile.distances.length - 1));
-      const i = Math.min(idx, trailProfile.distances.length - 1);
-      setHover({
-        distance: trailProfile.distances[i]!,
-        elevation: trailProfile.elevations[i]!,
-      });
+      const { distance, elevation } = distanceIndexFromClientX(trailProfile, e.clientX, e.currentTarget);
+      setHover({ distance, elevation });
+      if (onCursorChangeKm && e.buttons === 1) {
+        onCursorChangeKm(distance);
+      }
     },
-    [trailProfile, maxDist]
+    [trailProfile, maxDist, onCursorChangeKm]
   );
 
   const onMouseLeave = useCallback(() => setHover(null), []);
 
   const onClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
-      if (!trailProfile?.distances?.length || maxDist === 0 || !onAddEntryExit) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left - PAD.left;
-      const innerW = WIDTH - PAD.left - PAD.right;
-      const t = Math.max(0, Math.min(1, x / innerW));
-      const idx = Math.floor(t * (trailProfile.distances.length - 1));
-      const i = Math.min(idx, trailProfile.distances.length - 1);
-      onAddEntryExit(trailProfile.distances[i]!, trailProfile.elevations[i]!);
+      if (!trailProfile?.distances?.length || maxDist === 0) return;
+      const { distance, elevation } = distanceIndexFromClientX(trailProfile, e.clientX, e.currentTarget);
+      if (e.shiftKey && onAddEntryExit) {
+        onAddEntryExit(distance, elevation);
+        return;
+      }
+      if (onCursorChangeKm) {
+        onCursorChangeKm(distance);
+        return;
+      }
+      if (onAddEntryExit) {
+        onAddEntryExit(distance, elevation);
+      }
     },
-    [trailProfile, maxDist, onAddEntryExit]
+    [trailProfile, maxDist, onAddEntryExit, onCursorChangeKm]
   );
 
   if (!trailProfile?.distances?.length) return null;
@@ -102,7 +137,13 @@ export function ElevationProfileOverlay({ trailProfile, onAddEntryExit }: Props)
       aria-label="Elevation profile"
     >
       <div className="text-[10px] font-medium text-stone-600">Elevation (m)</div>
-      {onAddEntryExit && (
+      {onCursorChangeKm && onAddEntryExit && (
+        <div className="text-[9px] text-stone-500">Click: cursor · Shift+click: entry/exit</div>
+      )}
+      {onCursorChangeKm && !onAddEntryExit && (
+        <div className="text-[9px] text-stone-500">Click or drag to move cursor</div>
+      )}
+      {!onCursorChangeKm && onAddEntryExit && (
         <div className="text-[9px] text-stone-500">Click to add entry/exit point</div>
       )}
       <svg
@@ -112,7 +153,7 @@ export function ElevationProfileOverlay({ trailProfile, onAddEntryExit }: Props)
         onMouseLeave={onMouseLeave}
         onClick={onClick}
         className="block cursor-crosshair"
-        role={onAddEntryExit ? "button" : undefined}
+        role={onAddEntryExit || onCursorChangeKm ? "button" : undefined}
       >
         <defs>
           <linearGradient id="elevation-fill" x1="0" y1="1" x2="0" y2="0">
@@ -143,6 +184,17 @@ export function ElevationProfileOverlay({ trailProfile, onAddEntryExit }: Props)
         />
         {/* Line */}
         <path d={pathD} fill="none" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Route cursor (synced with map) */}
+        {cursorDistanceKm != null && maxDist > 0 && (
+          <line
+            x1={scaleX(cursorDistanceKm)}
+            y1={PAD.top}
+            x2={scaleX(cursorDistanceKm)}
+            y2={HEIGHT - PAD.bottom}
+            stroke="#EA580C"
+            strokeWidth="2"
+          />
+        )}
         {/* Hover vertical line */}
         {hover !== null && (
           <line
@@ -150,9 +202,10 @@ export function ElevationProfileOverlay({ trailProfile, onAddEntryExit }: Props)
             y1={PAD.top}
             x2={scaleX(hover.distance)}
             y2={HEIGHT - PAD.bottom}
-            stroke="#EA580C"
+            stroke="#F97316"
             strokeWidth="1"
-            strokeDasharray="2,2"
+            strokeDasharray="3,3"
+            opacity={0.85}
           />
         )}
       </svg>
