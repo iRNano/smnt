@@ -81,7 +81,6 @@ function RotateIcon() {
 
 const ENTRY_EXIT_POI_LAYER_ID = "entry-exit-pois-layer";
 const FOLLOW_MAP_ZOOM = 13;
-const DRAG_THROTTLE_MS = 24;
 
 function RouteCursorMarker({
   longitude,
@@ -92,18 +91,51 @@ function RouteCursorMarker({
   latitude: number;
   onDrag: (lng: number, lat: number) => void;
 }) {
-  const lastDragTs = useRef(0);
+  // Marker dragging has its own "free-drag" visual; we re-snap every frame
+  // so the cursor stays locked to the route while the mouse is held.
+  const rafId = useRef<number | null>(null);
+  const pending = useRef<{ lng: number; lat: number } | null>(null);
+
+  const flush = useCallback(() => {
+    if (!pending.current) return;
+    onDrag(pending.current.lng, pending.current.lat);
+  }, [onDrag]);
+
+  const schedule = useCallback(() => {
+    if (rafId.current != null) return;
+    rafId.current = requestAnimationFrame(() => {
+      rafId.current = null;
+      flush();
+    });
+  }, [flush]);
+
+  useEffect(() => {
+    return () => {
+      if (rafId.current != null) cancelAnimationFrame(rafId.current);
+    };
+  }, []);
+
   const handleDrag = useCallback(
     (e: { lngLat: { lng: number; lat: number } }) => {
-      const now = performance.now();
-      if (now - lastDragTs.current < DRAG_THROTTLE_MS) return;
-      lastDragTs.current = now;
-      onDrag(e.lngLat.lng, e.lngLat.lat);
+      pending.current = { lng: e.lngLat.lng, lat: e.lngLat.lat };
+      schedule();
     },
-    [onDrag]
+    [schedule]
   );
+
+  const handleDragEnd = useCallback(() => {
+    flush();
+  }, [flush]);
+
   return (
-    <Marker longitude={longitude} latitude={latitude} anchor="center" draggable onDrag={handleDrag}>
+    <Marker
+      longitude={longitude}
+      latitude={latitude}
+      anchor="center"
+      draggable
+      onDrag={handleDrag}
+      onDragEnd={handleDragEnd}
+    >
       <div
         className="flex h-5 w-5 cursor-grab items-center justify-center rounded-full border-2 border-white bg-[#EA580C] shadow-md active:cursor-grabbing"
         onPointerDown={(e) => e.stopPropagation()}
@@ -194,49 +226,60 @@ function MapContent({
     return lineString(mainRoute.geometry.coordinates);
   }, [mainRoute]);
 
-  const routeLengthKm = useMemo(() => {
+  const lineLengthKm = useMemo(() => {
     if (!mainLine) return 0;
     return length(mainLine, { units: "kilometers" });
   }, [mainLine]);
 
+  const profileMaxKm = useMemo(() => {
+    const d = data.trailProfile?.distances;
+    const max = d?.length ? d[d.length - 1] : 0;
+    return typeof max === "number" && max > 0 ? max : 0;
+  }, [data.trailProfile]);
+
+  // Cursor distance is stored in "profile km" so the elevation chart and map stay aligned.
+  const cursorMaxKm = profileMaxKm || lineLengthKm;
   const [cursorKm, setCursorKm] = useState(0);
 
   useEffect(() => {
-    if (routeLengthKm <= 0) return;
+    if (cursorMaxKm <= 0) return;
     setCursorKm((prev) => {
-      if (prev > 0 && prev <= routeLengthKm) return prev;
-      return routeLengthKm / 2;
+      if (prev > 0 && prev <= cursorMaxKm) return prev;
+      return cursorMaxKm / 2;
     });
-  }, [routeLengthKm]);
+  }, [cursorMaxKm]);
 
   const cursorPoint = useMemo(() => {
-    if (!mainLine || routeLengthKm <= 0) return null;
-    const km = Math.max(0, Math.min(routeLengthKm, cursorKm));
+    if (!mainLine || lineLengthKm <= 0 || cursorMaxKm <= 0) return null;
+    const profileKm = Math.max(0, Math.min(cursorMaxKm, cursorKm));
+    const kmOnLine = (profileKm / cursorMaxKm) * lineLengthKm;
     try {
-      return along(mainLine, km, { units: "kilometers" });
+      return along(mainLine, kmOnLine, { units: "kilometers" });
     } catch {
       return null;
     }
-  }, [mainLine, routeLengthKm, cursorKm]);
+  }, [mainLine, lineLengthKm, cursorMaxKm, cursorKm]);
 
   const snapDragToRoute = useCallback(
     (lng: number, lat: number) => {
-      if (!mainLine || routeLengthKm <= 0) return;
+      if (!mainLine || lineLengthKm <= 0 || cursorMaxKm <= 0) return;
       const snapped = nearestPointOnLine(mainLine, point([lng, lat]), { units: "kilometers" });
       const loc = snapped.properties.location;
-      const km = typeof loc === "number" ? loc : (snapped.properties as { totalDistance?: number }).totalDistance ?? 0;
-      if (typeof km !== "number" || Number.isNaN(km)) return;
-      setCursorKm(Math.max(0, Math.min(routeLengthKm, km)));
+      const kmOnLine =
+        typeof loc === "number" ? loc : (snapped.properties as { totalDistance?: number }).totalDistance ?? 0;
+      if (typeof kmOnLine !== "number" || Number.isNaN(kmOnLine)) return;
+      const profileKm = (Math.max(0, Math.min(lineLengthKm, kmOnLine)) / lineLengthKm) * cursorMaxKm;
+      setCursorKm(Math.max(0, Math.min(cursorMaxKm, profileKm)));
     },
-    [mainLine, routeLengthKm]
+    [mainLine, lineLengthKm, cursorMaxKm]
   );
 
   const setCursorKmClamped = useCallback(
     (km: number) => {
-      if (routeLengthKm <= 0) return;
-      setCursorKm(Math.max(0, Math.min(routeLengthKm, km)));
+      if (cursorMaxKm <= 0) return;
+      setCursorKm(Math.max(0, Math.min(cursorMaxKm, km)));
     },
-    [routeLengthKm]
+    [cursorMaxKm]
   );
 
   const followMapRef = useRef<MapRef | null>(null);
@@ -354,7 +397,7 @@ function MapContent({
     );
   }
 
-  const showRouteCursor = Boolean(mainLine && routeLengthKm > 0 && cursorLngLat);
+  const showRouteCursor = Boolean(mainLine && lineLengthKm > 0 && cursorMaxKm > 0 && cursorLngLat);
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -504,12 +547,6 @@ function MapContent({
           <RotateIcon />
         </button>
       </div>
-      <ElevationProfileOverlay
-        trailProfile={data.trailProfile ?? null}
-        onAddEntryExit={onAddEntryExit}
-        cursorDistanceKm={showRouteCursor ? cursorKm : undefined}
-        onCursorChangeKm={showRouteCursor ? setCursorKmClamped : undefined}
-      />
       {mapInfo && (
         <div className="absolute bottom-4 right-4 z-100 max-w-[280px] rounded bg-white/95 px-2 py-1.5 font-mono text-[10px] text-stone-600 shadow">
           <div>Zoom: {mapInfo.zoom.toFixed(2)}</div>
@@ -517,6 +554,17 @@ function MapContent({
         </div>
       )}
       </div>
+
+      {data.trailProfile?.distances?.length ? (
+        <div className="w-full overflow-hidden rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
+          <ElevationProfileOverlay
+            trailProfile={data.trailProfile ?? null}
+            onAddEntryExit={onAddEntryExit}
+            cursorDistanceKm={showRouteCursor ? cursorKm : undefined}
+            onCursorChangeKm={showRouteCursor ? setCursorKmClamped : undefined}
+          />
+        </div>
+      ) : null}
 
       {showRouteCursor && cursorLngLat && (
         <div className="relative h-[240px] w-full shrink-0 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">

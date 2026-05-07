@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const WIDTH = 240;
-const HEIGHT = 100;
+const DEFAULT_WIDTH = 720;
+const HEIGHT = 120;
 const PAD = { top: 12, right: 8, bottom: 20, left: 36 };
 
 export type TrailProfile = { distances: number[]; elevations: number[] } | null;
@@ -20,11 +20,12 @@ type Props = {
 function distanceIndexFromClientX(
   trailProfile: NonNullable<TrailProfile>,
   clientX: number,
-  svgEl: SVGSVGElement
+  svgEl: SVGSVGElement,
+  width: number
 ): { distance: number; elevation: number; index: number } {
   const rect = svgEl.getBoundingClientRect();
   const x = clientX - rect.left - PAD.left;
-  const innerW = WIDTH - PAD.left - PAD.right;
+  const innerW = width - PAD.left - PAD.right;
   const maxD = trailProfile.distances[trailProfile.distances.length - 1] ?? 0;
   if (maxD === 0 || innerW <= 0) {
     return {
@@ -53,19 +54,33 @@ export function ElevationProfileOverlay({
   cursorDistanceKm,
   onCursorChangeKm,
 }: Props) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [hover, setHover] = useState<{ distance: number; elevation: number } | null>(null);
 
-  const { pathD, pathArea, scaleX, scaleY, minEle, maxEle, maxDist, rangeE, yTicks } = useMemo(() => {
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const apply = () => {
+      const next = Math.max(320, Math.floor(el.getBoundingClientRect().width));
+      setWidth(next);
+    };
+    apply();
+
+    const ro = new ResizeObserver(() => apply());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const { pathD, pathArea, scaleX, scaleY, maxDist, yTicks } = useMemo(() => {
     if (!trailProfile?.distances?.length || trailProfile.distances.length !== trailProfile.elevations.length) {
       return {
         pathD: "",
         pathArea: "",
         scaleX: () => 0,
         scaleY: () => 0,
-        minEle: 0,
-        maxEle: 0,
         maxDist: 0,
-        rangeE: 1,
         yTicks: [] as number[],
       };
     }
@@ -75,7 +90,7 @@ export function ElevationProfileOverlay({
     const maxE = Math.max(...ele);
     const maxD = dist[dist.length - 1] ?? 0;
     const range = maxE - minE || 1;
-    const innerW = WIDTH - PAD.left - PAD.right;
+    const innerW = width - PAD.left - PAD.right;
     const innerH = HEIGHT - PAD.top - PAD.bottom;
     const scaleX = (d: number) => PAD.left + (d / maxD) * innerW;
     const scaleY = (e: number) => PAD.top + innerH - ((e - minE) / range) * innerH;
@@ -90,19 +105,19 @@ export function ElevationProfileOverlay({
     ticks.push(maxE);
     const yTicks = [...new Set(ticks.map((v) => Math.round(v)))].sort((a, b) => a - b);
 
-    return { pathD, pathArea, scaleX, scaleY, minEle: minE, maxEle: maxE, maxDist: maxD, rangeE: range, yTicks };
-  }, [trailProfile]);
+    return { pathD, pathArea, scaleX, scaleY, maxDist: maxD, yTicks };
+  }, [trailProfile, width]);
 
   const onMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       if (!trailProfile?.distances?.length || maxDist === 0) return;
-      const { distance, elevation } = distanceIndexFromClientX(trailProfile, e.clientX, e.currentTarget);
+      const { distance, elevation } = distanceIndexFromClientX(trailProfile, e.clientX, e.currentTarget, width);
       setHover({ distance, elevation });
       if (onCursorChangeKm && e.buttons === 1) {
         onCursorChangeKm(distance);
       }
     },
-    [trailProfile, maxDist, onCursorChangeKm]
+    [trailProfile, maxDist, onCursorChangeKm, width]
   );
 
   const onMouseLeave = useCallback(() => setHover(null), []);
@@ -110,7 +125,7 @@ export function ElevationProfileOverlay({
   const onClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       if (!trailProfile?.distances?.length || maxDist === 0) return;
-      const { distance, elevation } = distanceIndexFromClientX(trailProfile, e.clientX, e.currentTarget);
+      const { distance, elevation } = distanceIndexFromClientX(trailProfile, e.clientX, e.currentTarget, width);
       if (e.shiftKey && onAddEntryExit) {
         onAddEntryExit(distance, elevation);
         return;
@@ -123,19 +138,13 @@ export function ElevationProfileOverlay({
         onAddEntryExit(distance, elevation);
       }
     },
-    [trailProfile, maxDist, onAddEntryExit, onCursorChangeKm]
+    [trailProfile, maxDist, onAddEntryExit, onCursorChangeKm, width]
   );
 
   if (!trailProfile?.distances?.length) return null;
 
-  const innerW = WIDTH - PAD.left - PAD.right;
-  const innerH = HEIGHT - PAD.top - PAD.bottom;
-
   return (
-    <div
-      className="leaflet-control leaflet-bar absolute bottom-4 left-4 z-1000 rounded bg-white/95 p-1 shadow"
-      aria-label="Elevation profile"
-    >
+    <div ref={containerRef} className="w-full" aria-label="Elevation profile">
       <div className="text-[10px] font-medium text-stone-600">Elevation (m)</div>
       {onCursorChangeKm && onAddEntryExit && (
         <div className="text-[9px] text-stone-500">Click: cursor · Shift+click: entry/exit</div>
@@ -147,12 +156,12 @@ export function ElevationProfileOverlay({
         <div className="text-[9px] text-stone-500">Click to add entry/exit point</div>
       )}
       <svg
-        width={WIDTH}
+        width={width}
         height={HEIGHT}
         onMouseMove={onMouseMove}
         onMouseLeave={onMouseLeave}
         onClick={onClick}
-        className="block cursor-crosshair"
+        className="mt-1 block cursor-crosshair"
         role={onAddEntryExit || onCursorChangeKm ? "button" : undefined}
       >
         <defs>
@@ -174,7 +183,7 @@ export function ElevationProfileOverlay({
           </text>
         ))}
         {/* X axis label */}
-        <text x={WIDTH / 2} y={HEIGHT - 4} textAnchor="middle" className="fill-stone-500 text-[9px]">
+        <text x={width / 2} y={HEIGHT - 4} textAnchor="middle" className="fill-stone-500 text-[9px]">
           Distance (km)
         </text>
         {/* Area under line */}
