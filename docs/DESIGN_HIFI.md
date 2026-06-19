@@ -25,10 +25,11 @@
 | `text-primary` | `#0A0A0A` | `#F5F5F5` |
 | `text-secondary` | `#525252` | `#A3A3A3` |
 | `border` | `#E5E5E5` | `#2D3748` |
-| **Route: main** | `#16A34A` | `#22C55E` | Main route |
+| **Route: proposed main** | `#6B7280` | `#6B7280` | Proposed main baseline (shipped) |
+| **Route: verified main** | `#16A34A` | `#22C55E` | After ocular verification (not on map yet) |
 | **Route: exit** | `#EA580C` | `#F97316` | Exit routes |
-| **Route: not passable** | `#DC2626` | `#EF4444` | Red |
-| **Route: user input** | `#7C3AED` | `#A78BFA` | Pending / user |
+| **Route: not passable** | `#991B1B` | `#EF4444` | Red segments |
+| **Route: user input** | `#7C3AED` | `#A78BFA` | Pending / user (dashed when pending) |
 | **Accent** | `#0D9488` | `#2DD4BF` | CTAs, links |
 | **Ad zone** | `#F5F5F5` | `#1E293B` | Ad placeholder bg |
 
@@ -82,11 +83,12 @@
 - **Legend:** Horizontal bar below map or floating bottom-left; chips: colored dot + label  
 - **CTAs:** “Submit route” primary (accent bg); “Explorer’s Kit” secondary (outline)  
 
-### 3.4 Route Tooltip (hover)
+### 3.4 Route Tooltip (hover) — planned
 
 - **Bg:** `surface`; shadow elevated; border 1px  
 - **Content:** Route name (H3), list of explorers (small), date  
 - **Max-width:** 280px; padding 12px 16px  
+- **Status:** Not implemented; POI popup is the current interaction pattern.
 
 ### 3.5 POI / Route Detail Panel
 
@@ -114,10 +116,11 @@
 
 ### 4.1 Home — Map View
 
-- **Above map:** Ad banner (90px) → layer toggles + “Submit route” + “Explorer’s Kit” in one bar (56px).  
-- **Map:** Full viewport width; height ≥ 60vh; default view: horizontal (left–right); tiles + routes (green/orange/red) + POI markers (icons).  
-- **Legend:** Fixed bottom-left or bottom bar; chips with route colors + “Main”, “Exit”, “Not passable”, “User input”, “Existing”.  
-- **Interactions:** Hover route → tooltip; click POI → panel; smooth transitions (200–300ms).  
+- **Above map:** Layer toggles (placeholder pills) + “Submit route” + “Explorer’s Kit” in one bar.  
+- **Map:** Full viewport width; height ≥ 60vh; default view: horizontal (North on left); Mapbox Outdoors tiles + routes (gray/orange/red/purple) + corridor + POI markers.  
+- **Map controls:** GPX import, zoom, rotation (top-left); elevation profile (lower-left); zoom/bounds readout.  
+- **Legend:** Footer bar below map; chips: “Proposed main” (gray), “Exit”, “Not passable”, “User input”, “Existing”.  
+- **Interactions:** Click POI → popup (shipped); hover route → tooltip (planned); smooth transitions (200–300ms).  
 
 ### 4.2 Explore
 
@@ -184,4 +187,4 @@
 
 **View in app:** Run `npm run dev` and open [/design](http://localhost:3000/design) for the HiFi Home (map) preview.
 
-**Reference:** [WIREFRAMES_LOFI.md](./WIREFRAMES_LOFI.md) for layout structure; [UI_UX_FLOW.md](./UI_UX_FLOW.md) for flows.
+**Reference:** [WIREFRAMES_LOFI.md](./WIREFRAMES_LOFI.md) for layout structure; [UI_UX_FLOW.md](./UI_UX_FLOW.md) for flows; [ARCHITECTURE.md](./ARCHITECTURE.md) for layer colors and API.

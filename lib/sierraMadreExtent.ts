@@ -37,3 +37,6 @@ export const sierraMadreExtent: GeoJSON.FeatureCollection<
     },
   ],
 };
+
+/** NSMNP outline used for map focus mask (client-safe GeoJSON). */
+export const sierraMadreParkPolygon: GeoJSON.Polygon = NORTHERN_SIERRA_MADRE_NATURAL_PARK;

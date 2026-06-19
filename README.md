@@ -2,7 +2,7 @@
 
 Interactive map-first web app for exploring the SMNT trail: a main route + corridor, elevation profile, and POIs.
 
-**Product docs:** see `docs/` (vision/MVP notes + deployment guide).
+**Product docs:** see `docs/` — including [ARCHITECTURE.md](docs/ARCHITECTURE.md) (web mapping system), vision/MVP notes, and [DEPLOY.md](docs/DEPLOY.md).
 
 ## Stack
 
@@ -17,9 +17,10 @@ Interactive map-first web app for exploring the SMNT trail: a main route + corri
 - Map-first home experience (client-only map component)
 - GPX-derived trail route + corridor polygon
 - Elevation profile overlay with cursor sync
-- `/api/map` endpoint that can run in:
-  - **GPX mode** (no DB): derives the trail route/profile/corridor
-  - **DB mode** (with `DATABASE_URL`): returns routes + POIs from Postgres
+- `/api/map` endpoint (structured: `proposedMain`, `officialRoutes`, `userRoutes`)
+- `POST /api/routes/upload` for GPX (requires schema v2 + `DATABASE_URL`)
+- **Submit route** modal on home: GPX drop, preview vs proposed main, pending review
+- **`/admin`** — SMNT admin reviews (set `SMNT_ADMIN_SECRET` in env)
 
 ## Local development
 
@@ -41,7 +42,8 @@ copy .env.example .env.local
 
 Optional:
 
-- `DATABASE_URL` (enables DB mode for `/api/map`)
+- `DATABASE_URL` (enables DB mode for `/api/map` and route submissions)
+- `SMNT_ADMIN_SECRET` (required for `/admin` route reviews)
 
 4. Run dev server:
 

@@ -7,55 +7,20 @@ import length from "@turf/length";
 import nearestPointOnLine from "@turf/nearest-point-on-line";
 import { lineString, point } from "@turf/helpers";
 import type { MapRef } from "react-map-gl/mapbox";
-import Map, { Layer, Marker, Popup, Source } from "react-map-gl/mapbox";
+import Map, { Marker, Popup } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 import { ElevationProfileOverlay } from "./ElevationProfileOverlay";
-
-type RouteRow = {
-  id: string;
-  name: string;
-  route_type: string;
-  explorer_credits: string[];
-  opened_at: string | null;
-  geometry: GeoJSON.LineString;
-};
-
-type PoiRow = {
-  id: string;
-  name: string;
-  poi_type: string;
-  description: string | null;
-  geometry: GeoJSON.Point;
-};
-
-type SectionRow = {
-  id: string;
-  slug: string;
-  name: string;
-  from_poi: string;
-  to_poi: string;
-  description: string | null;
-  geometry: GeoJSON.LineString;
-};
-
-type TrailProfile = { distances: number[]; elevations: number[] } | null;
-type MapData = {
-  routes: RouteRow[];
-  pois: PoiRow[];
-  sections: SectionRow[];
-  trailProfile?: TrailProfile;
-  trailCorridor?: GeoJSON.Feature<GeoJSON.Polygon> | null;
-  entryExitPoisSuggested?: PoiRow[];
-};
+import { MapTrailLayers } from "./MapTrailLayers";
+import { normalizeMapApiResponse } from "@/lib/normalizeMapApiResponse";
+import { sectionsToHighlightCollection } from "@/lib/sectionUtils";
+import type { MapData, PoiRow, SectionRow } from "@/lib/mapTypes";
 
 const ENTRY_EXIT_POIS_STORAGE_KEY = "smnt-entry-exit-pois";
 
-const ROUTE_COLORS: Record<string, string> = {
-  main: "#92400E",
-  exit: "#C2410C",
-  not_passable: "#991B1B",
-};
+const ENTRY_EXIT_POI_LAYER_ID = "entry-exit-pois-layer";
+const SECTION_HIT_LAYER_ID = "section-hit";
+const FOLLOW_MAP_ZOOM = 13;
 
 function RotateIcon() {
   return (
@@ -78,9 +43,6 @@ function RotateIcon() {
     </svg>
   );
 }
-
-const ENTRY_EXIT_POI_LAYER_ID = "entry-exit-pois-layer";
-const FOLLOW_MAP_ZOOM = 13;
 
 function RouteCursorMarker({
   longitude,
@@ -156,31 +118,69 @@ function MapContent({
 }) {
   const mapRef = useRef<MapRef | null>(null);
   const [selectedPoi, setSelectedPoi] = useState<PoiRow | null>(null);
+  const [hoveredSection, setHoveredSection] = useState<SectionRow | null>(null);
   const [mapInfo, setMapInfo] = useState<{ zoom: number; bounds: string } | null>(null);
 
   const boundsBbox = useMemo((): [number, number, number, number] | null => {
-    const main = data.routes?.find((r) => r.route_type === "main") ?? data.routes?.[0];
+    const main = data.proposedMain;
     if (!main?.geometry?.coordinates?.length) return null;
     const line = lineString(main.geometry.coordinates);
     return bbox(line) as [number, number, number, number];
-  }, [data.routes]);
+  }, [data.proposedMain]);
 
-  const routeFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
+  const proposedMainFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
+    () =>
+      data.proposedMain
+        ? {
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                id: data.proposedMain.id,
+                properties: {
+                  name: data.proposedMain.name,
+                  category: data.proposedMain.category,
+                },
+                geometry: data.proposedMain.geometry,
+              },
+            ],
+          }
+        : { type: "FeatureCollection", features: [] },
+    [data.proposedMain]
+  );
+
+  const officialRoutesFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
     () => ({
       type: "FeatureCollection",
-      features: (data.routes || []).map((r) => ({
+      features: (data.officialRoutes || []).map((r) => ({
         type: "Feature" as const,
         id: r.id,
         properties: {
           name: r.name,
-          route_type: r.route_type,
+          category: r.category,
           explorer_credits: r.explorer_credits,
-          opened_at: r.opened_at,
         },
         geometry: r.geometry,
       })),
     }),
-    [data.routes]
+    [data.officialRoutes]
+  );
+
+  const userRoutesFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: (data.userRoutes || []).map((r) => ({
+        type: "Feature" as const,
+        id: r.id,
+        properties: {
+          name: r.name,
+          status: r.status ?? "approved",
+          source: r.source,
+        },
+        geometry: r.geometry,
+      })),
+    }),
+    [data.userRoutes]
   );
 
   const corridorFeatures: GeoJSON.FeatureCollection<GeoJSON.Polygon> = useMemo(
@@ -193,6 +193,26 @@ function MapContent({
         : { type: "FeatureCollection" as const, features: [] },
     [data.trailCorridor]
   );
+
+  const sectionHitFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: (data.sections ?? []).map((s) => ({
+        type: "Feature" as const,
+        id: s.id,
+        properties: { id: s.id, slug: s.slug, name: s.name },
+        geometry: s.geometry,
+      })),
+    }),
+    [data.sections]
+  );
+
+  const sectionHighlightFeatures = useMemo(() => {
+    if (!hoveredSection) {
+      return { type: "FeatureCollection" as const, features: [] };
+    }
+    return sectionsToHighlightCollection([hoveredSection]);
+  }, [hoveredSection]);
 
   const entryExitPois = useMemo(
     () => [...(data.entryExitPoisSuggested ?? []), ...userEntryExitPois],
@@ -216,10 +236,7 @@ function MapContent({
     [entryExitPois]
   );
 
-  const mainRoute = useMemo(
-    () => data.routes?.find((r) => r.route_type === "main") ?? data.routes?.[0] ?? null,
-    [data.routes]
-  );
+  const mainRoute = data.proposedMain;
 
   const mainLine = useMemo(() => {
     if (!mainRoute?.geometry?.coordinates?.length) return null;
@@ -340,6 +357,18 @@ function MapContent({
       const map = mapRef.current?.getMap?.();
       if (!map) return;
       const point: [number, number] = [e.point.x, e.point.y];
+
+      const sectionHits = map.queryRenderedFeatures(point, {
+        layers: [SECTION_HIT_LAYER_ID],
+      });
+      if (sectionHits.length > 0) {
+        const slug = sectionHits[0]?.properties?.slug as string | undefined;
+        if (slug) {
+          window.location.href = `/sections/${slug}`;
+          return;
+        }
+      }
+
       const features = map.queryRenderedFeatures(point, {
         layers: [ENTRY_EXIT_POI_LAYER_ID],
       });
@@ -366,6 +395,31 @@ function MapContent({
     },
     [entryExitPois]
   );
+
+  const onMapMouseMove = useCallback(
+    (e: { point: { x: number; y: number } }) => {
+      const map = mapRef.current?.getMap?.();
+      if (!map) return;
+      const point: [number, number] = [e.point.x, e.point.y];
+      const hits = map.queryRenderedFeatures(point, { layers: [SECTION_HIT_LAYER_ID] });
+      if (hits.length === 0) {
+        setHoveredSection(null);
+        map.getCanvas().style.cursor = "";
+        return;
+      }
+      const id = hits[0]?.properties?.id as string | undefined;
+      const section = data.sections?.find((s) => s.id === id) ?? null;
+      setHoveredSection(section);
+      map.getCanvas().style.cursor = section ? "pointer" : "";
+    },
+    [data.sections]
+  );
+
+  const onMapMouseLeave = useCallback(() => {
+    setHoveredSection(null);
+    const map = mapRef.current?.getMap?.();
+    if (map) map.getCanvas().style.cursor = "";
+  }, []);
 
   const onRotationClick = useCallback(() => {
     const ref = mapRef.current;
@@ -416,64 +470,23 @@ function MapContent({
           onLoad={onMapLoad}
           onMoveEnd={updateMapInfo}
           onClick={onMapClick}
+          onMouseMove={onMapMouseMove}
+          onMouseLeave={onMapMouseLeave}
           style={{ width: "100%", height: "100%" }}
-          interactiveLayerIds={[ENTRY_EXIT_POI_LAYER_ID]}
+          interactiveLayerIds={[ENTRY_EXIT_POI_LAYER_ID, SECTION_HIT_LAYER_ID]}
           cursor={undefined}
         >
-        {corridorFeatures.features.length > 0 && (
-          <Source id="corridor" type="geojson" data={corridorFeatures}>
-            <Layer
-              id="corridor-fill"
-              type="fill"
-              paint={{
-                "fill-color": "#78716c",
-                "fill-opacity": 0.14,
-              }}
-            />
-            <Layer
-              id="corridor-line"
-              type="line"
-              paint={{
-                "line-color": "#57534e",
-                "line-width": 1,
-                "line-opacity": 0.7,
-              }}
-            />
-          </Source>
-        )}
-        <Source id="route" type="geojson" data={routeFeatures}>
-          <Layer
-            id="route-line"
-            type="line"
-            paint={{
-              "line-color": [
-                "match",
-                ["get", "route_type"],
-                "main",
-                ROUTE_COLORS.main,
-                "exit",
-                ROUTE_COLORS.exit,
-                "not_passable",
-                ROUTE_COLORS.not_passable,
-                ROUTE_COLORS.main,
-              ],
-              "line-width": 5,
-              "line-opacity": 0.9,
-            }}
-          />
-        </Source>
-        <Source id="entry-exit-pois" type="geojson" data={poiFeatures}>
-          <Layer
-            id={ENTRY_EXIT_POI_LAYER_ID}
-            type="circle"
-            paint={{
-              "circle-radius": 8,
-              "circle-color": "#C2410C",
-              "circle-stroke-color": "#9A3412",
-              "circle-stroke-width": 2,
-            }}
-          />
-        </Source>
+        <MapTrailLayers
+          corridorFeatures={corridorFeatures}
+          sectionHighlightFeatures={sectionHighlightFeatures}
+          sectionHitFeatures={sectionHitFeatures}
+          sectionHitLayerId={SECTION_HIT_LAYER_ID}
+          proposedMainFeatures={proposedMainFeatures}
+          officialRoutesFeatures={officialRoutesFeatures}
+          userRoutesFeatures={userRoutesFeatures}
+          poiFeatures={poiFeatures}
+          entryExitLayerId={ENTRY_EXIT_POI_LAYER_ID}
+        />
         {showRouteCursor && cursorLngLat && (
           <RouteCursorMarker
             longitude={cursorLngLat.lng}
@@ -553,6 +566,12 @@ function MapContent({
           <div className="truncate" title={mapInfo.bounds}>Bounds: {mapInfo.bounds}</div>
         </div>
       )}
+      {hoveredSection && (
+        <div className="pointer-events-none absolute left-14 top-2 z-100 max-w-[220px] rounded-md bg-white/95 px-2.5 py-1.5 text-xs text-stone-700 shadow">
+          <div className="font-medium">{hoveredSection.name}</div>
+          <div className="text-[10px] text-stone-500">Click for section details</div>
+        </div>
+      )}
       </div>
 
       {data.trailProfile?.distances?.length ? (
@@ -588,60 +607,15 @@ function MapContent({
             keyboard={false}
             attributionControl={false}
           >
-            {corridorFeatures.features.length > 0 && (
-              <Source id="corridor-follow" type="geojson" data={corridorFeatures}>
-                <Layer
-                  id="corridor-fill-follow"
-                  type="fill"
-                  paint={{
-                    "fill-color": "#78716c",
-                    "fill-opacity": 0.14,
-                  }}
-                />
-                <Layer
-                  id="corridor-line-follow"
-                  type="line"
-                  paint={{
-                    "line-color": "#57534e",
-                    "line-width": 1,
-                    "line-opacity": 0.7,
-                  }}
-                />
-              </Source>
-            )}
-            <Source id="route-follow" type="geojson" data={routeFeatures}>
-              <Layer
-                id="route-line-follow"
-                type="line"
-                paint={{
-                  "line-color": [
-                    "match",
-                    ["get", "route_type"],
-                    "main",
-                    ROUTE_COLORS.main,
-                    "exit",
-                    ROUTE_COLORS.exit,
-                    "not_passable",
-                    ROUTE_COLORS.not_passable,
-                    ROUTE_COLORS.main,
-                  ],
-                  "line-width": 5,
-                  "line-opacity": 0.9,
-                }}
-              />
-            </Source>
-            <Source id="entry-exit-pois-follow" type="geojson" data={poiFeatures}>
-              <Layer
-                id="entry-exit-pois-layer-follow"
-                type="circle"
-                paint={{
-                  "circle-radius": 8,
-                  "circle-color": "#C2410C",
-                  "circle-stroke-color": "#9A3412",
-                  "circle-stroke-width": 2,
-                }}
-              />
-            </Source>
+            <MapTrailLayers
+              idPrefix="follow-"
+              corridorFeatures={corridorFeatures}
+              proposedMainFeatures={proposedMainFeatures}
+              officialRoutesFeatures={officialRoutesFeatures}
+              userRoutesFeatures={userRoutesFeatures}
+              poiFeatures={poiFeatures}
+              entryExitLayerId="entry-exit-pois-layer-follow"
+            />
             <RouteCursorMarker
               longitude={cursorLngLat.lng}
               latitude={cursorLngLat.lat}
@@ -683,16 +657,36 @@ export default function SMNTMapClient() {
   const [error, setError] = useState<string | null>(null);
   const [userEntryExitPois, setUserEntryExitPois] = useState<PoiRow[]>([]);
 
+  const loadMapData = useCallback(() => {
+    return fetch("/api/map")
+      .then((res) => {
+        if (!res.ok)
+          throw new Error(res.status === 503 ? "Database not configured" : "Failed to load map");
+        return res.json();
+      })
+      .then((json) => {
+        const normalized = normalizeMapApiResponse(json as Record<string, unknown>);
+        setData(normalized);
+      });
+  }, []);
+
   useEffect(() => {
     setUserEntryExitPois(loadUserEntryExitPois());
-  }, []);
+    loadMapData().catch((err) => setError(err.message));
+  }, [loadMapData]);
+
+  useEffect(() => {
+    const onRefresh = () => {
+      loadMapData().catch(() => {});
+    };
+    window.addEventListener("smnt-map-refresh", onRefresh);
+    return () => window.removeEventListener("smnt-map-refresh", onRefresh);
+  }, [loadMapData]);
 
   const handleAddEntryExit = useCallback(
     (distanceKm: number, _elevationM: number) => {
-      if (!data?.routes?.length) return;
-      const main = data.routes.find((r) => r.route_type === "main") ?? data.routes[0];
-      if (!main?.geometry?.coordinates?.length) return;
-      const line = lineString(main.geometry.coordinates);
+      if (!data?.proposedMain?.geometry?.coordinates?.length) return;
+      const line = lineString(data.proposedMain.geometry.coordinates);
       const pt = along(line, distanceKm, { units: "kilometers" });
       const [lng, lat] = pt.geometry.coordinates;
       const newPoi: PoiRow = {
@@ -712,28 +706,8 @@ export default function SMNTMapClient() {
         return next;
       });
     },
-    [data?.routes]
+    [data?.proposedMain]
   );
-
-  useEffect(() => {
-    fetch("/api/map")
-      .then((res) => {
-        if (!res.ok)
-          throw new Error(res.status === 503 ? "Database not configured" : "Failed to load map");
-        return res.json();
-      })
-      .then((json) =>
-        setData({
-          routes: json.routes ?? [],
-          pois: json.pois ?? [],
-          sections: json.sections ?? [],
-          trailProfile: json.trailProfile ?? null,
-          trailCorridor: json.trailCorridor ?? null,
-          entryExitPoisSuggested: json.entryExitPoisSuggested ?? [],
-        })
-      )
-      .catch((err) => setError(err.message));
-  }, []);
 
   if (error) {
     return (

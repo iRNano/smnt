@@ -22,11 +22,13 @@ The SMNT website **opens to an interactive map**. Map is positioned **horizontal
 
 - **Real-time GPX route input** from anyone, subject to confirmation (badge/icon after “ocular” verification in a month).
 - **Route types & colors:**
-  - **Green** — Main route
+  - **Green** — Verified main route (after ocular verification)
+  - **Gray** — Proposed main route (baseline under exploration; see implementation note below)
   - **Orange** — Exit routes
   - **Red** — Not passable or not explored yet
-  - **User input color** — For user-contributed routes (vs existing trail)
-- **Route credits:** Mouse-over on routes shows list of explorers (e.g. MFPI, UPM) for instant gratification; encourages urgency and competition so everyone can be “bida” (hero).
+  - **Purple** — User-contributed routes (vs existing trail)
+- **Route colors (implementation):** The live map uses **gray** for the proposed main baseline, **purple** for user-imported tracks on top, and reserves **green** for a future **verified main** line after ocular confirmation. See [ARCHITECTURE.md §6](./ARCHITECTURE.md).
+- **Route credits:** Mouse-over on routes shows list of explorers (e.g. MFPI, UPM) for instant gratification; encourages urgency and competition so everyone can be “bida” (hero). *(Planned — POI click popup is implemented today.)*
 - **Route maker / tools:** Integration or guidance for Google Map, All Trails, Osmand.
 
 ### 2.2 Map Features
@@ -77,7 +79,7 @@ The SMNT website **opens to an interactive map**. Map is positioned **horizontal
 
 - **Next.js:** Single codebase for site + API; easy to add ad slots per page; great DX and deployment (e.g. Vercel).
 - **PostgreSQL:** Reliable, supports roles, forms, reports, and future scaling.
-- **PostGIS:** Essential for the interactive map — routes as linestrings, POIs as points, spatial queries (e.g. “routes near this jump-off”), and integration with map libraries (e.g. Mapbox, Leaflet).
+- **PostGIS:** Essential for the interactive map — routes as linestrings, POIs as points, spatial queries (e.g. “routes near this jump-off”), and integration with **Mapbox GL JS** (current map library).
 
 ---
 
