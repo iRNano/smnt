@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WheelEvent as ReactWheelEvent } from "react";
 import along from "@turf/along";
 import bbox from "@turf/bbox";
 import length from "@turf/length";
@@ -14,13 +15,22 @@ import { ElevationProfileOverlay } from "./ElevationProfileOverlay";
 import { MapTrailLayers } from "./MapTrailLayers";
 import { normalizeMapApiResponse } from "@/lib/normalizeMapApiResponse";
 import { sectionsToHighlightCollection } from "@/lib/sectionUtils";
-import type { MapData, PoiRow, SectionRow } from "@/lib/mapTypes";
+import { LAYER_COLORS } from "@/lib/mapApiBuilder";
+import type { MapData, PoiRow, SectionRow, TrailRouteRow } from "@/lib/mapTypes";
 
 const ENTRY_EXIT_POIS_STORAGE_KEY = "smnt-entry-exit-pois";
 
 const ENTRY_EXIT_POI_LAYER_ID = "entry-exit-pois-layer";
 const SECTION_HIT_LAYER_ID = "section-hit";
+const ROUTE_CREDITS_HIT_LAYER_ID = "route-credits-hit";
 const FOLLOW_MAP_ZOOM = 13;
+
+const LEGEND_ITEMS: { label: string; color: string }[] = [
+  { label: "Main route", color: LAYER_COLORS.proposedMain },
+  { label: "Exit", color: LAYER_COLORS.exit },
+  { label: "Not passable", color: LAYER_COLORS.notPassable },
+  { label: "User input", color: LAYER_COLORS.userRoute },
+];
 
 function RotateIcon() {
   return (
@@ -120,6 +130,15 @@ function MapContent({
   const [selectedPoi, setSelectedPoi] = useState<PoiRow | null>(null);
   const [hoveredSection, setHoveredSection] = useState<SectionRow | null>(null);
   const [mapInfo, setMapInfo] = useState<{ zoom: number; bounds: string } | null>(null);
+  const [hoveredRoute, setHoveredRoute] = useState<{
+    name: string;
+    credits: string;
+    creditCount: number;
+  } | null>(null);
+  const [hoverPixel, setHoverPixel] = useState<{ x: number; y: number } | null>(null);
+  const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+  const scrollHintTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const boundsBbox = useMemo((): [number, number, number, number] | null => {
     const main = data.proposedMain;
@@ -193,6 +212,30 @@ function MapContent({
         : { type: "FeatureCollection" as const, features: [] },
     [data.trailCorridor]
   );
+
+  const routeCreditsFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(() => {
+    const rows: TrailRouteRow[] = [
+      ...(data.proposedMain ? [data.proposedMain] : []),
+      ...(data.officialRoutes ?? []),
+      ...(data.userRoutes ?? []),
+    ];
+    return {
+      type: "FeatureCollection",
+      features: rows.map((r) => {
+        const credits = r.explorer_credits ?? [];
+        return {
+          type: "Feature" as const,
+          id: r.id,
+          properties: {
+            name: r.name,
+            credits: credits.join(", "),
+            creditCount: credits.length,
+          },
+          geometry: r.geometry,
+        };
+      }),
+    };
+  }, [data.proposedMain, data.officialRoutes, data.userRoutes]);
 
   const sectionHitFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString> = useMemo(
     () => ({
@@ -401,6 +444,25 @@ function MapContent({
       const map = mapRef.current?.getMap?.();
       if (!map) return;
       const point: [number, number] = [e.point.x, e.point.y];
+
+      const routeHits = map.queryRenderedFeatures(point, {
+        layers: [ROUTE_CREDITS_HIT_LAYER_ID],
+      });
+      if (routeHits.length > 0) {
+        const props = routeHits[0]?.properties as
+          | { name?: string; credits?: string; creditCount?: number }
+          | undefined;
+        setHoveredRoute({
+          name: props?.name ?? "Route",
+          credits: props?.credits ?? "",
+          creditCount: props?.creditCount ?? 0,
+        });
+        setHoverPixel({ x: e.point.x, y: e.point.y });
+      } else {
+        setHoveredRoute(null);
+        setHoverPixel(null);
+      }
+
       const hits = map.queryRenderedFeatures(point, { layers: [SECTION_HIT_LAYER_ID] });
       if (hits.length === 0) {
         setHoveredSection(null);
@@ -417,8 +479,43 @@ function MapContent({
 
   const onMapMouseLeave = useCallback(() => {
     setHoveredSection(null);
+    setHoveredRoute(null);
+    setHoverPixel(null);
     const map = mapRef.current?.getMap?.();
     if (map) map.getCanvas().style.cursor = "";
+  }, []);
+
+  // Scroll requires Ctrl/Cmd so the mouse wheel scrolls the page by default;
+  // holding the modifier temporarily hands the wheel to the map for zooming.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control" || e.key === "Meta") setScrollZoomEnabled(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control" || e.key === "Meta") setScrollZoomEnabled(false);
+    };
+    const onBlur = () => setScrollZoomEnabled(false);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
+  const onMapWheel = useCallback((e: ReactWheelEvent) => {
+    if (e.ctrlKey || e.metaKey) return;
+    setShowScrollHint(true);
+    if (scrollHintTimeout.current) clearTimeout(scrollHintTimeout.current);
+    scrollHintTimeout.current = setTimeout(() => setShowScrollHint(false), 1200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollHintTimeout.current) clearTimeout(scrollHintTimeout.current);
+    };
   }, []);
 
   const onRotationClick = useCallback(() => {
@@ -456,7 +553,10 @@ function MapContent({
   return (
     <div className="flex w-full flex-col gap-4">
       {/* Explicit height required: flex-1 + h-full parents collapse to 0, hiding the Map canvas */}
-      <div className="relative h-[60vh] min-h-[320px] w-full overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
+      <div
+        className="relative h-[60vh] min-h-[320px] w-full overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm"
+        onWheelCapture={onMapWheel}
+      >
         <Map
           ref={mapRef}
           mapboxAccessToken={token}
@@ -473,14 +573,17 @@ function MapContent({
           onMouseMove={onMapMouseMove}
           onMouseLeave={onMapMouseLeave}
           style={{ width: "100%", height: "100%" }}
-          interactiveLayerIds={[ENTRY_EXIT_POI_LAYER_ID, SECTION_HIT_LAYER_ID]}
+          interactiveLayerIds={[ENTRY_EXIT_POI_LAYER_ID, SECTION_HIT_LAYER_ID, ROUTE_CREDITS_HIT_LAYER_ID]}
           cursor={undefined}
+          scrollZoom={scrollZoomEnabled}
         >
         <MapTrailLayers
           corridorFeatures={corridorFeatures}
           sectionHighlightFeatures={sectionHighlightFeatures}
           sectionHitFeatures={sectionHitFeatures}
           sectionHitLayerId={SECTION_HIT_LAYER_ID}
+          routeCreditsHitFeatures={routeCreditsFeatures}
+          routeCreditsHitLayerId={ROUTE_CREDITS_HIT_LAYER_ID}
           proposedMainFeatures={proposedMainFeatures}
           officialRoutesFeatures={officialRoutesFeatures}
           userRoutesFeatures={userRoutesFeatures}
@@ -570,6 +673,55 @@ function MapContent({
         <div className="pointer-events-none absolute left-14 top-2 z-100 max-w-[220px] rounded-md bg-white/95 px-2.5 py-1.5 text-xs text-stone-700 shadow">
           <div className="font-medium">{hoveredSection.name}</div>
           <div className="text-[10px] text-stone-500">Click for section details</div>
+        </div>
+      )}
+      <div className="pointer-events-none absolute right-2 top-2 z-100 rounded-md bg-white/95 px-3 py-2 text-xs text-stone-700 shadow">
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+          Legend
+        </div>
+        <div className="flex flex-col gap-1">
+          {LEGEND_ITEMS.map((item) => (
+            <div key={item.label} className="flex items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: item.color }}
+                aria-hidden
+              />
+              {item.label}
+            </div>
+          ))}
+        </div>
+      </div>
+      {showScrollHint && (
+        <div className="pointer-events-none absolute left-1/2 top-1/2 z-100 -translate-x-1/2 -translate-y-1/2 rounded-md bg-black/75 px-3 py-2 text-xs font-medium text-white shadow-lg">
+          Hold Ctrl (⌘ on Mac) + scroll to zoom
+        </div>
+      )}
+      {hoveredRoute && hoverPixel && (
+        <div
+          className="pointer-events-none absolute z-100 max-w-[240px] rounded-md border border-stone-200 bg-white/95 px-3 py-2 text-xs text-stone-700 shadow-lg"
+          style={{ left: hoverPixel.x + 14, top: hoverPixel.y + 14 }}
+        >
+          <div className="font-semibold text-stone-900">{hoveredRoute.name}</div>
+          {hoveredRoute.creditCount > 0 ? (
+            <div className="mt-1">
+              <div className="text-[10px] uppercase tracking-wide text-stone-400">
+                Explorer credits
+              </div>
+              <div>{hoveredRoute.credits}</div>
+            </div>
+          ) : (
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <span className="text-stone-500">No explorers credited yet.</span>
+              <button
+                type="button"
+                className="pointer-events-auto font-medium text-[#0D9488] hover:underline"
+                onClick={() => window.dispatchEvent(new Event("smnt-open-submit-route"))}
+              >
+                Be the first →
+              </button>
+            </div>
+          )}
         </div>
       )}
       </div>

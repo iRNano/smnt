@@ -12,23 +12,6 @@ export default function Home() {
           <SMNTMapDynamic />
         </div>
       </div>
-      <div className="bg-[#1A1F26] border-t border-[#2D3748] px-6 py-4 flex flex-wrap items-center gap-6 text-sm">
-        <span className="flex items-center gap-2 text-[#F5F5F5]">
-          <span className="w-3 h-3 rounded-full bg-[#6B7280]" aria-hidden /> Main route
-        </span>
-        <span className="flex items-center gap-2 text-[#F5F5F5]">
-          <span className="w-3 h-3 rounded-full bg-[#F97316]" aria-hidden /> Exit
-        </span>
-        <span className="flex items-center gap-2 text-[#F5F5F5]">
-          <span className="w-3 h-3 rounded-full bg-[#EF4444]" aria-hidden /> Not passable
-        </span>
-        <span className="flex items-center gap-2 text-[#F5F5F5]">
-          <span className="w-3 h-3 rounded-full bg-[#7C3AED]" aria-hidden /> User input
-        </span>
-        <span className="flex items-center gap-2 text-[#F5F5F5]">
-          <span className="w-3 h-3 rounded-full bg-[#2DD4BF]" aria-hidden /> Existing trail
-        </span>
-      </div>
       <SMNTFooter />
     </div>
   );

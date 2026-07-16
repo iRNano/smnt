@@ -15,24 +15,8 @@ export function chainageKmOnLine(
   lngLat: [number, number]
 ): number {
   const line = lineString(mainLine.coordinates);
-  const snapped = nearestPointOnLine(line, point(lngLat));
-  const [snapLng, snapLat] = snapped.geometry.coordinates;
-
-  let bestKm = 0;
-  let bestDist = Infinity;
-  const totalKm = length(line, { units: "kilometers" });
-  const steps = Math.max(80, Math.ceil(totalKm * 4));
-
-  for (let i = 0; i <= steps; i++) {
-    const d = (i / steps) * totalKm;
-    const p = along(line, d, { units: "kilometers" });
-    const km = distance(p.geometry.coordinates, [snapLng, snapLat], { units: "kilometers" });
-    if (km < bestDist) {
-      bestDist = km;
-      bestKm = d;
-    }
-  }
-  return bestKm;
+  const snapped = nearestPointOnLine(line, point(lngLat), { units: "kilometers" });
+  return snapped.properties.location ?? 0;
 }
 
 /** Extract a sub-segment of a line between two chainages (km). */

@@ -144,6 +144,8 @@ async function loadFromLegacyRoutes(client: PoolClient): Promise<{
   };
 }
 
+let gpxSectionsCache: SectionRow[] | undefined;
+
 export async function getMapApiResponse(): Promise<MapApiResponse> {
   const pool = getDbPool();
 
@@ -154,9 +156,10 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
         ? proposedMainFromGeometry("gpx-trail", "Sierra Madre Nature Trail", gpxGeometry)
         : null;
     const entryExitPoisSuggested = getEntryExitPoisSuggested();
-    const sections = gpxGeometry
-      ? deriveTrailSections(gpxGeometry, entryExitPoisSuggested)
-      : [];
+    if (gpxSectionsCache === undefined) {
+      gpxSectionsCache = gpxGeometry ? deriveTrailSections(gpxGeometry, entryExitPoisSuggested) : [];
+    }
+    const sections = gpxSectionsCache;
 
     return buildMapApiResponse({
       proposedMain,
