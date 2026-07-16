@@ -13,6 +13,9 @@ import "mapbox-gl/dist/mapbox-gl.css";
 
 import { ElevationProfileOverlay } from "./ElevationProfileOverlay";
 import { MapTrailLayers } from "./MapTrailLayers";
+import { Modal } from "./Modal";
+import { RotateIcon } from "./RotateIcon";
+import { SectionDetail } from "./SectionDetail";
 import { normalizeMapApiResponse } from "@/lib/normalizeMapApiResponse";
 import { sectionsToHighlightCollection } from "@/lib/sectionUtils";
 import { LAYER_COLORS } from "@/lib/mapApiBuilder";
@@ -23,7 +26,14 @@ const ENTRY_EXIT_POIS_STORAGE_KEY = "smnt-entry-exit-pois";
 const ENTRY_EXIT_POI_LAYER_ID = "entry-exit-pois-layer";
 const SECTION_HIT_LAYER_ID = "section-hit";
 const ROUTE_CREDITS_HIT_LAYER_ID = "route-credits-hit";
-const FOLLOW_MAP_ZOOM = 13;
+
+type MapboxMapInstance = NonNullable<ReturnType<NonNullable<MapRef["getMap"]>>>;
+
+/** mapbox-gl throws if the layer hasn't been added to the style yet (e.g. before data loads). */
+function queryLayerFeatures(map: MapboxMapInstance, point: [number, number], layerId: string) {
+  if (!map.getLayer(layerId)) return [];
+  return map.queryRenderedFeatures(point, { layers: [layerId] });
+}
 
 const LEGEND_ITEMS: { label: string; color: string }[] = [
   { label: "Main route", color: LAYER_COLORS.proposedMain },
@@ -31,28 +41,6 @@ const LEGEND_ITEMS: { label: string; color: string }[] = [
   { label: "Not passable", color: LAYER_COLORS.notPassable },
   { label: "User input", color: LAYER_COLORS.userRoute },
 ];
-
-function RotateIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={18}
-      height={18}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="pointer-events-none"
-    >
-      <path d="M21 2v6h-6" />
-      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-      <path d="M3 22v-6h6" />
-      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-    </svg>
-  );
-}
 
 function RouteCursorMarker({
   longitude,
@@ -129,6 +117,7 @@ function MapContent({
   const mapRef = useRef<MapRef | null>(null);
   const [selectedPoi, setSelectedPoi] = useState<PoiRow | null>(null);
   const [hoveredSection, setHoveredSection] = useState<SectionRow | null>(null);
+  const [selectedSectionDetail, setSelectedSectionDetail] = useState<SectionRow | null>(null);
   const [mapInfo, setMapInfo] = useState<{ zoom: number; bounds: string } | null>(null);
   const [hoveredRoute, setHoveredRoute] = useState<{
     name: string;
@@ -342,23 +331,11 @@ function MapContent({
     [cursorMaxKm]
   );
 
-  const followMapRef = useRef<MapRef | null>(null);
-
   const cursorLngLat = useMemo(() => {
     if (!cursorPoint?.geometry?.coordinates?.length) return null;
     const [lng, lat] = cursorPoint.geometry.coordinates;
     return { lng, lat };
   }, [cursorPoint]);
-
-  useEffect(() => {
-    if (!cursorLngLat) return;
-    const raw = followMapRef.current?.getMap?.();
-    if (!raw) return;
-    raw.jumpTo({
-      center: [cursorLngLat.lng, cursorLngLat.lat],
-      zoom: FOLLOW_MAP_ZOOM,
-    });
-  }, [cursorLngLat]);
 
   const updateMapInfo = useCallback(() => {
     const rawMap = mapRef.current?.getMap?.();
@@ -401,20 +378,17 @@ function MapContent({
       if (!map) return;
       const point: [number, number] = [e.point.x, e.point.y];
 
-      const sectionHits = map.queryRenderedFeatures(point, {
-        layers: [SECTION_HIT_LAYER_ID],
-      });
+      const sectionHits = queryLayerFeatures(map, point, SECTION_HIT_LAYER_ID);
       if (sectionHits.length > 0) {
-        const slug = sectionHits[0]?.properties?.slug as string | undefined;
-        if (slug) {
-          window.location.href = `/sections/${slug}`;
+        const id = sectionHits[0]?.properties?.id as string | undefined;
+        const section = data.sections?.find((s) => s.id === id) ?? null;
+        if (section) {
+          setSelectedSectionDetail(section);
           return;
         }
       }
 
-      const features = map.queryRenderedFeatures(point, {
-        layers: [ENTRY_EXIT_POI_LAYER_ID],
-      });
+      const features = queryLayerFeatures(map, point, ENTRY_EXIT_POI_LAYER_ID);
       if (features.length === 0) {
         setSelectedPoi(null);
         return;
@@ -436,7 +410,7 @@ function MapContent({
         });
       }
     },
-    [entryExitPois]
+    [entryExitPois, data.sections]
   );
 
   const onMapMouseMove = useCallback(
@@ -445,9 +419,7 @@ function MapContent({
       if (!map) return;
       const point: [number, number] = [e.point.x, e.point.y];
 
-      const routeHits = map.queryRenderedFeatures(point, {
-        layers: [ROUTE_CREDITS_HIT_LAYER_ID],
-      });
+      const routeHits = queryLayerFeatures(map, point, ROUTE_CREDITS_HIT_LAYER_ID);
       if (routeHits.length > 0) {
         const props = routeHits[0]?.properties as
           | { name?: string; credits?: string; creditCount?: number }
@@ -463,7 +435,7 @@ function MapContent({
         setHoverPixel(null);
       }
 
-      const hits = map.queryRenderedFeatures(point, { layers: [SECTION_HIT_LAYER_ID] });
+      const hits = queryLayerFeatures(map, point, SECTION_HIT_LAYER_ID);
       if (hits.length === 0) {
         setHoveredSection(null);
         map.getCanvas().style.cursor = "";
@@ -737,48 +709,26 @@ function MapContent({
         </div>
       ) : null}
 
-      {showRouteCursor && cursorLngLat && (
-        <div className="relative h-[240px] w-full shrink-0 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm">
-          <Map
-            ref={followMapRef}
-            mapboxAccessToken={token}
-            initialViewState={{
-              longitude: cursorLngLat.lng,
-              latitude: cursorLngLat.lat,
-              zoom: FOLLOW_MAP_ZOOM,
-              bearing: 0,
-            }}
-            mapStyle="mapbox://styles/mapbox/outdoors-v12"
-            style={{ width: "100%", height: "100%" }}
-            dragPan={false}
-            scrollZoom={false}
-            doubleClickZoom={false}
-            boxZoom={false}
-            dragRotate={false}
-            touchZoomRotate={false}
-            keyboard={false}
-            attributionControl={false}
-          >
-            <MapTrailLayers
-              idPrefix="follow-"
-              corridorFeatures={corridorFeatures}
-              proposedMainFeatures={proposedMainFeatures}
-              officialRoutesFeatures={officialRoutesFeatures}
-              userRoutesFeatures={userRoutesFeatures}
-              poiFeatures={poiFeatures}
-              entryExitLayerId="entry-exit-pois-layer-follow"
-            />
-            <RouteCursorMarker
-              longitude={cursorLngLat.lng}
-              latitude={cursorLngLat.lat}
-              onDrag={snapDragToRoute}
-            />
-          </Map>
-          <div className="pointer-events-none absolute left-4 top-4 z-10 rounded-md bg-white/95 px-2.5 py-1.5 text-[10px] font-medium text-stone-600 shadow">
-            Route detail (follows cursor)
-          </div>
-        </div>
-      )}
+      <Modal
+        open={!!selectedSectionDetail}
+        onClose={() => setSelectedSectionDetail(null)}
+        title={selectedSectionDetail?.name ?? "Section"}
+        maxWidth="lg"
+      >
+        {selectedSectionDetail && (
+          <>
+            <SectionDetail section={selectedSectionDetail} mainLine={mainRoute?.geometry ?? null} />
+            <div className="mt-4 text-right text-sm">
+              <a
+                href={`/sections/${selectedSectionDetail.slug}`}
+                className="text-[#0D9488] hover:underline"
+              >
+                Open full page →
+              </a>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

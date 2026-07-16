@@ -1,4 +1,5 @@
 import along from "@turf/along";
+import bbox from "@turf/bbox";
 import buffer from "@turf/buffer";
 import distance from "@turf/distance";
 import length from "@turf/length";
@@ -8,6 +9,32 @@ import type { PoiRow, SectionRow } from "./mapTypes";
 
 const SECTION_MATCH_DISTANCE_KM = 3;
 const SECTION_HIGHLIGHT_BUFFER_KM = 3;
+const MAX_MATCH_SAMPLE_POINTS = 300;
+
+type Bbox = [number, number, number, number];
+
+/** Roughly expand a bbox by `km` in every direction (equirectangular approximation, fine at this tolerance). */
+function expandBbox(b: Bbox, km: number): Bbox {
+  const degLat = km / 111;
+  const midLat = (b[1] + b[3]) / 2;
+  const degLng = km / (111 * Math.cos((midLat * Math.PI) / 180) || 1);
+  return [b[0] - degLng, b[1] - degLat, b[2] + degLng, b[3] + degLat];
+}
+
+function bboxesOverlap(a: Bbox, b: Bbox): boolean {
+  return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+}
+
+/** Evenly downsample coordinates so distance-matching doesn't scale with raw GPX point density. */
+function sampleCoordinates(coords: GeoJSON.Position[], maxPoints: number): GeoJSON.Position[] {
+  if (coords.length <= maxPoints) return coords;
+  const step = coords.length / maxPoints;
+  const sampled: GeoJSON.Position[] = [];
+  for (let i = 0; i < maxPoints; i++) {
+    sampled.push(coords[Math.floor(i * step)]!);
+  }
+  return sampled;
+}
 
 /** Distance (km) along a main trail line from the start to the nearest point on the line to `lngLat`. */
 export function chainageKmOnLine(
@@ -198,12 +225,22 @@ export function matchSubmissionToSections(
 ): SectionRow[] {
   if (!userRoute.coordinates?.length || sections.length === 0) return [];
 
+  const userBbox = bbox(lineString(userRoute.coordinates)) as Bbox;
+  const expandedUserBbox = expandBbox(userBbox, maxDistanceKm);
+  const sampledUserCoords = sampleCoordinates(userRoute.coordinates, MAX_MATCH_SAMPLE_POINTS);
+
   const matched: SectionRow[] = [];
   for (const section of sections) {
     if (!section.geometry?.coordinates?.length) continue;
+
+    // Cheap reject: skip sections whose bbox can't possibly be within maxDistanceKm
+    // of the submitted route before running any nearestPointOnLine scans.
+    const sectionBbox = bbox(lineString(section.geometry.coordinates)) as Bbox;
+    if (!bboxesOverlap(sectionBbox, expandedUserBbox)) continue;
+
     const secLine = lineString(section.geometry.coordinates);
     let hit = false;
-    for (const coord of userRoute.coordinates) {
+    for (const coord of sampledUserCoords) {
       const nearest = nearestPointOnLine(secLine, point(coord));
       const d = distance(coord, nearest.geometry.coordinates, { units: "kilometers" });
       if (d <= maxDistanceKm) {
