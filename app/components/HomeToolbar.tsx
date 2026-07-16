@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SubmitRouteModal } from "./SubmitRouteModal";
 
 export function HomeToolbar() {
   const [submitOpen, setSubmitOpen] = useState(false);
+
+  useEffect(() => {
+    const onOpenSubmit = () => setSubmitOpen(true);
+    window.addEventListener("smnt-open-submit-route", onOpenSubmit);
+    return () => window.removeEventListener("smnt-open-submit-route", onOpenSubmit);
+  }, []);
 
   return (
     <>

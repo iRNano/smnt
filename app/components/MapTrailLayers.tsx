@@ -11,6 +11,8 @@ type Props = {
   sectionHighlightFeatures?: GeoJSON.FeatureCollection<GeoJSON.Polygon>;
   sectionHitFeatures?: GeoJSON.FeatureCollection<GeoJSON.LineString>;
   sectionHitLayerId?: string;
+  routeCreditsHitFeatures?: GeoJSON.FeatureCollection<GeoJSON.LineString>;
+  routeCreditsHitLayerId?: string;
   proposedMainFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString>;
   officialRoutesFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString>;
   userRoutesFeatures: GeoJSON.FeatureCollection<GeoJSON.LineString>;
@@ -28,6 +30,8 @@ export function MapTrailLayers({
   sectionHighlightFeatures,
   sectionHitFeatures,
   sectionHitLayerId,
+  routeCreditsHitFeatures,
+  routeCreditsHitLayerId,
   proposedMainFeatures,
   officialRoutesFeatures,
   userRoutesFeatures,
@@ -107,6 +111,19 @@ export function MapTrailLayers({
               "line-color": proposedMainColor ?? LAYER_COLORS.proposedMain,
               "line-width": 5,
               "line-opacity": 0.95,
+            }}
+          />
+        </Source>
+      )}
+      {routeCreditsHitFeatures && routeCreditsHitFeatures.features.length > 0 && (
+        <Source id={`${p}route-credits-hit`} type="geojson" data={routeCreditsHitFeatures}>
+          <Layer
+            id={routeCreditsHitLayerId ?? `${p}route-credits-hit`}
+            type="line"
+            paint={{
+              "line-color": LAYER_COLORS.proposedMain,
+              "line-width": 16,
+              "line-opacity": 0,
             }}
           />
         </Source>
