@@ -1,8 +1,38 @@
 import { NextResponse } from "next/server";
 import { getDbPool, tableExists } from "@/lib/db/pool";
 import { parseGpxXmlToLineString } from "@/lib/parseGpxToLineString";
+import type { ConfirmedPoi } from "@/lib/submissionTypes";
 
 const MAX_GPX_BYTES = 5 * 1024 * 1024;
+const VALID_POI_TYPES = new Set([
+  "start",
+  "exit",
+  "camp",
+  "water",
+  "summit",
+  "poi",
+  "danger",
+  "other",
+]);
+
+function parseConfirmedPois(input: FormDataEntryValue | null): ConfirmedPoi[] {
+  if (typeof input !== "string") return [];
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (p): p is ConfirmedPoi =>
+        !!p &&
+        typeof p === "object" &&
+        typeof (p as ConfirmedPoi).name === "string" &&
+        VALID_POI_TYPES.has((p as ConfirmedPoi).poi_type) &&
+        (p as ConfirmedPoi).geometry?.type === "Point" &&
+        Array.isArray((p as ConfirmedPoi).geometry?.coordinates)
+    );
+  } catch {
+    return [];
+  }
+}
 
 export async function POST(request: Request) {
   const pool = getDbPool();
@@ -33,6 +63,7 @@ export async function POST(request: Request) {
       typeof submittedByInput === "string" && submittedByInput.trim()
         ? submittedByInput.trim()
         : null;
+    const confirmedPois = parseConfirmedPois(formData.get("pois"));
 
     if (!file || !(file instanceof File)) {
       return NextResponse.json({ error: "Missing GPX file (field: gpx)." }, { status: 400 });
@@ -61,6 +92,19 @@ export async function POST(request: Request) {
     );
 
     const row = result.rows[0];
+
+    if (confirmedPois.length > 0 && (await tableExists(client, "submission_pois"))) {
+      for (const poi of confirmedPois) {
+        await client.query(
+          `
+          INSERT INTO submission_pois (submission_id, name, poi_type, geometry, source)
+          VALUES ($1, $2, $3, ST_SetSRID(ST_GeomFromGeoJSON($4), 4326), $5)
+        `,
+          [row.id, poi.name, poi.poi_type, JSON.stringify(poi.geometry), poi.source]
+        );
+      }
+    }
+
     return NextResponse.json({
       id: row.id,
       name: row.name,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import along from "@turf/along";
 import length from "@turf/length";
 import { lineString } from "@turf/helpers";
 
@@ -8,9 +9,22 @@ import { Modal } from "./Modal";
 import { RoutePreviewMap } from "./RoutePreviewMap";
 import { normalizeMapApiResponse } from "@/lib/normalizeMapApiResponse";
 import { parseGpxXmlToLineString } from "@/lib/parseGpxToLineString";
+import { analyzeGpx, type WaypointRole } from "@/lib/gpxStructure";
 import { savePendingSubmission } from "@/lib/pendingSubmissionsStorage";
 import { matchSubmissionToSections } from "@/lib/sectionUtils";
 import type { MapData, SectionRow } from "@/lib/mapTypes";
+import type { ConfirmedPoi } from "@/lib/submissionTypes";
+
+const POI_TYPE_LABELS: Record<WaypointRole, string> = {
+  start: "Start",
+  exit: "Exit",
+  camp: "Camp",
+  water: "Water source",
+  summit: "Summit",
+  poi: "Point of interest",
+  danger: "Danger",
+  other: "Other",
+};
 
 const MAX_GPX_BYTES = 5 * 1024 * 1024;
 
@@ -33,6 +47,8 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [confirmedPois, setConfirmedPois] = useState<ConfirmedPoi[]>([]);
+  const [gpxWarnings, setGpxWarnings] = useState<string[]>([]);
 
   const resetForm = useCallback(() => {
     setRouteName("");
@@ -42,6 +58,8 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     setError(null);
     setSubmitting(false);
     setSuccess(false);
+    setConfirmedPois([]);
+    setGpxWarnings([]);
   }, []);
 
   useEffect(() => {
@@ -84,7 +102,57 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     setRouteName((prev) => prev || baseName);
     setUserGeometry(geometry);
     setFileName(file.name);
+
+    const analysis = analyzeGpx(xml);
+    setGpxWarnings(analysis.warnings);
+    if (analysis.waypoints.length > 0) {
+      setConfirmedPois(
+        analysis.waypoints.map((w) => ({
+          name: w.name,
+          poi_type: w.role,
+          geometry: { type: "Point", coordinates: w.coordinates },
+          source: "contributor",
+        }))
+      );
+    } else if (geometry.coordinates.length >= 2) {
+      const first = geometry.coordinates[0]!;
+      const last = geometry.coordinates[geometry.coordinates.length - 1]!;
+      setConfirmedPois([
+        { name: "Start", poi_type: "start", geometry: { type: "Point", coordinates: first }, source: "inferred" },
+        { name: "Exit", poi_type: "exit", geometry: { type: "Point", coordinates: last }, source: "inferred" },
+      ]);
+    } else {
+      setConfirmedPois([]);
+    }
   }, []);
+
+  const updatePoiName = (idx: number, name: string) => {
+    setConfirmedPois((prev) => prev.map((p, i) => (i === idx ? { ...p, name } : p)));
+  };
+
+  const updatePoiType = (idx: number, poi_type: WaypointRole) => {
+    setConfirmedPois((prev) => prev.map((p, i) => (i === idx ? { ...p, poi_type } : p)));
+  };
+
+  const removePoi = (idx: number) => {
+    setConfirmedPois((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const addPoi = () => {
+    if (!userGeometry) return;
+    const mid = along(lineString(userGeometry.coordinates), routeLengthKm ? routeLengthKm / 2 : 0, {
+      units: "kilometers",
+    });
+    setConfirmedPois((prev) => [
+      ...prev,
+      {
+        name: "New point",
+        poi_type: "poi",
+        geometry: { type: "Point", coordinates: mid.geometry.coordinates as [number, number] },
+        source: "contributor",
+      },
+    ]);
+  };
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -123,6 +191,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     formData.append("gpx", gpxFile);
     formData.append("name", routeName.trim());
     if (submittedBy.trim()) formData.append("submitted_by", submittedBy.trim());
+    if (confirmedPois.length > 0) formData.append("pois", JSON.stringify(confirmedPois));
 
     try {
       const res = await fetch("/api/routes/upload", { method: "POST", body: formData });
@@ -141,6 +210,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
           status: "pending",
           submitted_at: new Date().toISOString(),
           submitted_by: submittedBy.trim() || null,
+          pois: confirmedPois.length > 0 ? confirmedPois : undefined,
         });
         setSuccess(true);
         onSubmitted?.();
@@ -295,6 +365,71 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
                 className="h-[300px] w-full"
                 focusPreview
               />
+            </div>
+          )}
+
+          {userGeometry && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-[#0A0A0A]">Confirm points</span>
+                <button
+                  type="button"
+                  onClick={addPoi}
+                  className="text-xs font-semibold text-[#F79F17] hover:underline"
+                >
+                  + Add point
+                </button>
+              </div>
+              <p className="text-xs text-[#525252]">
+                {confirmedPois.some((p) => p.source === "inferred")
+                  ? "No waypoints found in your GPX — start/exit were guessed from the track's endpoints. Confirm or correct them below."
+                  : "Detected from your GPX file. Adjust names/types or remove any that aren't useful."}
+              </p>
+              {gpxWarnings.length > 0 && (
+                <ul className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {gpxWarnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              )}
+              {confirmedPois.length === 0 ? (
+                <p className="text-xs text-[#78716c]">No points yet — add one if useful.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {confirmedPois.map((poi, idx) => (
+                    <li
+                      key={idx}
+                      className="flex items-center gap-2 rounded-lg border border-[#E5E5E5] bg-[#FAFAFA] px-2 py-2"
+                    >
+                      <input
+                        type="text"
+                        value={poi.name}
+                        onChange={(e) => updatePoiName(idx, e.target.value)}
+                        className="min-w-0 flex-1 rounded border border-[#E5E5E5] bg-white px-2 py-1 text-sm focus:border-[#F79F17] focus:outline-none"
+                      />
+                      <select
+                        value={poi.poi_type}
+                        onChange={(e) => updatePoiType(idx, e.target.value as WaypointRole)}
+                        className="rounded border border-[#E5E5E5] bg-white px-2 py-1 text-sm focus:border-[#F79F17] focus:outline-none"
+                      >
+                        {(Object.keys(POI_TYPE_LABELS) as WaypointRole[]).map((role) => (
+                          <option key={role} value={role}>
+                            {POI_TYPE_LABELS[role]}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => removePoi(idx)}
+                        aria-label={`Remove ${poi.name}`}
+                        className="shrink-0 rounded px-2 py-1 text-sm text-[#991B1B] hover:bg-red-50"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
