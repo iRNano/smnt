@@ -33,6 +33,8 @@ export type PoiRow = {
   poi_type: string;
   description: string | null;
   geometry: GeoJSON.Point;
+  /** Approximate corridor-scoped province — see lib/philippineProvinces.ts. Not authoritative. */
+  province?: string | null;
 };
 
 export type SectionRow = {
@@ -43,6 +45,10 @@ export type SectionRow = {
   to_poi: string;
   description: string | null;
   geometry: GeoJSON.LineString;
+  /** Approximate corridor-scoped province(s) this section passes through. Not authoritative. */
+  provinces?: string[];
+  /** Names of peak-role waypoints whose chainage falls within this section. */
+  peaksInSection?: string[];
 };
 
 export type TrailProfile = { distances: number[]; elevations: number[] } | null;

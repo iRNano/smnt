@@ -12,6 +12,7 @@ import fs from "fs";
 import path from "path";
 import { DOMParser } from "@xmldom/xmldom";
 import { analyzeGpx } from "./gpxStructure";
+import { getApproximateProvince } from "./philippineProvinces";
 
 const GPX_PATH = path.join(process.cwd(), "lib", "data", "The-Sierra-Madre-Nature-Trail.gpx");
 const GPX_NS = "http://www.topografix.com/GPX/1/1";
@@ -25,6 +26,7 @@ export type EntryExitPoiRow = {
   poi_type: string;
   description: string | null;
   geometry: GeoJSON.Point;
+  province?: string | null;
 };
 
 let cached: GeoJSON.LineString | null | undefined = undefined;
@@ -232,6 +234,7 @@ export function getGpxWaypoints(): EntryExitPoiRow[] {
       poi_type: w.role,
       description: null,
       geometry: { type: "Point", coordinates: w.coordinates },
+      province: getApproximateProvince(w.coordinates[0], w.coordinates[1]),
     }));
     return gpxWaypointsCache;
   } catch {

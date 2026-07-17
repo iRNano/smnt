@@ -157,8 +157,19 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
         ? proposedMainFromGeometry("gpx-trail", "Sierra Madre Nature Trail", gpxGeometry)
         : null;
     const entryExitPoisSuggested = getEntryExitPoisSuggested();
+    const gpxWaypoints = getGpxWaypoints();
+    const realBoundaryPois = gpxWaypoints.filter(
+      (p) => p.poi_type === "start" || p.poi_type === "exit"
+    );
+    const peakPois = gpxWaypoints.filter((p) => p.poi_type === "peak");
+    // Prefer real trailhead/exit waypoints for section boundaries over the elevation-heuristic
+    // guesses — see docs/GPX_STRUCTURE.md. Falls back to the heuristic if a file has too few.
+    const sectionBoundaryPois =
+      realBoundaryPois.length >= 2 ? realBoundaryPois : entryExitPoisSuggested;
     if (gpxSectionsCache === undefined) {
-      gpxSectionsCache = gpxGeometry ? deriveTrailSections(gpxGeometry, entryExitPoisSuggested) : [];
+      gpxSectionsCache = gpxGeometry
+        ? deriveTrailSections(gpxGeometry, sectionBoundaryPois, undefined, peakPois)
+        : [];
     }
     const sections = gpxSectionsCache;
 
@@ -166,7 +177,7 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
       proposedMain,
       officialRoutes: [],
       userRoutes: [],
-      pois: getGpxWaypoints(),
+      pois: gpxWaypoints,
       sections,
       trailProfile: getGpxProfile(),
       trailCorridor: getGpxCorridor(),
