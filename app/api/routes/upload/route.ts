@@ -9,7 +9,7 @@ const VALID_POI_TYPES = new Set([
   "exit",
   "camp",
   "water",
-  "summit",
+  "peak",
   "poi",
   "danger",
   "other",

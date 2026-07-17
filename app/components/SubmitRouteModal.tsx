@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import along from "@turf/along";
+import distance from "@turf/distance";
 import length from "@turf/length";
 import { lineString } from "@turf/helpers";
 
@@ -20,7 +21,7 @@ const POI_TYPE_LABELS: Record<WaypointRole, string> = {
   exit: "Exit",
   camp: "Camp",
   water: "Water source",
-  summit: "Summit",
+  peak: "Peak",
   poi: "Point of interest",
   danger: "Danger",
   other: "Other",
@@ -105,25 +106,46 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
 
     const analysis = analyzeGpx(xml);
     setGpxWarnings(analysis.warnings);
-    if (analysis.waypoints.length > 0) {
-      setConfirmedPois(
-        analysis.waypoints.map((w) => ({
-          name: w.name,
-          poi_type: w.role,
-          geometry: { type: "Point", coordinates: w.coordinates },
-          source: "contributor",
-        }))
+
+    const waypointPois: ConfirmedPoi[] = analysis.waypoints.map((w) => ({
+      name: w.name,
+      poi_type: w.role,
+      geometry: { type: "Point", coordinates: w.coordinates },
+      source: "contributor",
+    }));
+
+    // Always ensure the track's own endpoints are represented as Start/Exit, unless
+    // a waypoint of that role already sits close enough to the endpoint to be it.
+    const ENDPOINT_DEDUPE_KM = 0.1;
+    const nearEndpoint = (role: WaypointRole, coords: [number, number]) =>
+      waypointPois.some(
+        (p) =>
+          p.poi_type === role &&
+          distance(p.geometry.coordinates, coords, { units: "kilometers" }) < ENDPOINT_DEDUPE_KM
       );
-    } else if (geometry.coordinates.length >= 2) {
-      const first = geometry.coordinates[0]!;
-      const last = geometry.coordinates[geometry.coordinates.length - 1]!;
-      setConfirmedPois([
-        { name: "Start", poi_type: "start", geometry: { type: "Point", coordinates: first }, source: "inferred" },
-        { name: "Exit", poi_type: "exit", geometry: { type: "Point", coordinates: last }, source: "inferred" },
-      ]);
-    } else {
-      setConfirmedPois([]);
+
+    const combined = [...waypointPois];
+    if (geometry.coordinates.length >= 2) {
+      const first = geometry.coordinates[0]! as [number, number];
+      const last = geometry.coordinates[geometry.coordinates.length - 1]! as [number, number];
+      if (!nearEndpoint("start", first)) {
+        combined.unshift({
+          name: "Start",
+          poi_type: "start",
+          geometry: { type: "Point", coordinates: first },
+          source: "inferred",
+        });
+      }
+      if (!nearEndpoint("exit", last)) {
+        combined.push({
+          name: "Exit",
+          poi_type: "exit",
+          geometry: { type: "Point", coordinates: last },
+          source: "inferred",
+        });
+      }
     }
+    setConfirmedPois(combined);
   }, []);
 
   const updatePoiName = (idx: number, name: string) => {
@@ -382,7 +404,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
               </div>
               <p className="text-xs text-[#525252]">
                 {confirmedPois.some((p) => p.source === "inferred")
-                  ? "No waypoints found in your GPX — start/exit were guessed from the track's endpoints. Confirm or correct them below."
+                  ? "Detected from your GPX file. Points marked as guessed (Start/Exit from the track's endpoints) weren't in your file — confirm or correct them below."
                   : "Detected from your GPX file. Adjust names/types or remove any that aren't useful."}
               </p>
               {gpxWarnings.length > 0 && (
@@ -407,6 +429,11 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
                         onChange={(e) => updatePoiName(idx, e.target.value)}
                         className="min-w-0 flex-1 rounded border border-[#E5E5E5] bg-white px-2 py-1 text-sm focus:border-[#F79F17] focus:outline-none"
                       />
+                      {poi.source === "inferred" && (
+                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          Guessed
+                        </span>
+                      )}
                       <select
                         value={poi.poi_type}
                         onChange={(e) => updatePoiType(idx, e.target.value as WaypointRole)}

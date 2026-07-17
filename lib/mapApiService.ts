@@ -12,6 +12,7 @@ import {
   getGpxCorridor,
   getGpxMainRouteGeometry,
   getGpxProfile,
+  getGpxWaypoints,
 } from "@/lib/loadGpxTrail";
 import { mockMapData } from "@/lib/mockMapData";
 import { deriveTrailSections } from "@/lib/sectionUtils";
@@ -165,7 +166,7 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
       proposedMain,
       officialRoutes: [],
       userRoutes: [],
-      pois: [],
+      pois: getGpxWaypoints(),
       sections,
       trailProfile: getGpxProfile(),
       trailCorridor: getGpxCorridor(),

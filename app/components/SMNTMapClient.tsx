@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WheelEvent as ReactWheelEvent } from "react";
 import along from "@turf/along";
 import bbox from "@turf/bbox";
+import distance from "@turf/distance";
 import length from "@turf/length";
 import nearestPointOnLine from "@turf/nearest-point-on-line";
 import { lineString, point } from "@turf/helpers";
@@ -258,10 +259,21 @@ function MapContent({
     return sectionsToHighlightCollection([hoveredSection]);
   }, [hoveredSection]);
 
-  const entryExitPois = useMemo(
-    () => [...(data.entryExitPoisSuggested ?? []), ...userEntryExitPois],
-    [data.entryExitPoisSuggested, userEntryExitPois]
-  );
+  const DEDUPE_THRESHOLD_KM = 0.3;
+
+  const entryExitPois = useMemo(() => {
+    const namedPois = data.pois ?? [];
+    const suggested = (data.entryExitPoisSuggested ?? []).filter(
+      (suggestion) =>
+        !namedPois.some(
+          (named) =>
+            distance(named.geometry.coordinates, suggestion.geometry.coordinates, {
+              units: "kilometers",
+            }) < DEDUPE_THRESHOLD_KM
+        )
+    );
+    return [...namedPois, ...suggested, ...userEntryExitPois];
+  }, [data.pois, data.entryExitPoisSuggested, userEntryExitPois]);
 
   const poiFeatures: GeoJSON.FeatureCollection<GeoJSON.Point> = useMemo(
     () => ({

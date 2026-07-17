@@ -21,7 +21,7 @@
 
 These three are the concrete reasons a "confirm before you store" step (§4) and a validation tool (§3) are worth building before PostGIS goes live — right now, bad structure fails silently.
 
-**Bonus finding while testing the tool in §3 against the real files:** [lib/data/The-Sierra-Madre-Nature-Trail.gpx](../lib/data/The-Sierra-Madre-Nature-Trail.gpx) — the *authoritative* main-trail file already contains **38 real, well-named waypoints** ("Mauban Trailhead", "Mingan Summit", "North NSMNP Exit Trailhead", etc.), all silently discarded by `loadGpxTrail.ts` today. This is likely the fastest path to fixing the "no real named POIs on the map" gap — the data already exists in the repo, it just isn't parsed. Not fixed in this pass (out of scope for the structure/tooling work requested); flagged here since it's a direct, low-effort payoff of building the analyzer.
+**Bonus finding while testing the tool in §3 against the real files (now fixed):** [lib/data/The-Sierra-Madre-Nature-Trail.gpx](../lib/data/The-Sierra-Madre-Nature-Trail.gpx) — the *authoritative* main-trail file already contains **38 real, well-named waypoints** ("Mauban Trailhead", "Mingan Summit", "North NSMNP Exit Trailhead", etc.), previously silently discarded by `loadGpxTrail.ts`. `getGpxWaypoints()` (same file) now parses them via `analyzeGpx()` and exposes them as `data.pois`, rendered on the map merged with the elevation-heuristic `entryExitPoisSuggested` (with a 300m dedupe so a named trailhead doesn't show two overlapping pins). The heuristic function itself is untouched — sections are still derived from it, see §5.3 of [ARCHITECTURE.md](./ARCHITECTURE.md#53-target-schema-recommended).
 
 ---
 
@@ -37,10 +37,11 @@ These three are the concrete reasons a "confirm before you store" step (§4) and
 - **`<ele>` on every trackpoint.** Needed for the submission's own elevation profile — currently the biggest silent data loss (finding #2 above).
 - **`<trk><name>`.** Used to prefill the route name field; falls back to filename today.
 - **One track per file.** If a contributor has a multi-day exploration, prefer separate uploads (or clearly named separate `<trk>` elements — see §2.3) over one file with disconnected segments.
-- **Waypoints (`<wpt>`) for anything that isn't just the breadcrumb trail:** trailhead/start, exit/end, summits, campsites, water sources, hazards. Plain GPX has no "role" field, so the analyzer in §3 tries three approaches, in order:
+- **Waypoints (`<wpt>`) for anything that isn't just the breadcrumb trail:** trailhead/start, exit/end, peaks, campsites, water sources, hazards. Plain GPX has no "role" field, so the analyzer in §3 tries three approaches, in order:
   1. **`<sym>`** (GPX 1.1 standard symbol name) if your GPS app/software sets it — Garmin devices commonly do. Known values: `Trailhead`, `Summit`, `Water Source`, `Campsite`, `Danger Area`, `Parking Area`.
   2. **Name-prefix convention**, for contributors hand-naming waypoints: prefix the `<name>` with a short tag — `START:` / `TH:` (trailhead), `END:` / `EXIT:` (exit), `CAMP:`, `WATER:`, `POI:`, `DANGER:`.
-  3. **Name-substring fallback** — matches the naming style already used in the real SMNT authoritative GPX (`"Mauban Trailhead"`, `"Mingan Summit"`, `"North NSMNP Exit Trailhead"`) without requiring any special tagging: a name containing "trailhead" → start, "summit"/"peak" → summit, "exit" → exit (checked first, since a name can contain both "exit" and "trailhead"), "camp"/"campsite" → camp, "water"/"spring" → water, "danger"/"hazard" → danger.
+  3. **Name-substring fallback** — matches the naming style already used in the real SMNT authoritative GPX (`"Mauban Trailhead"`, `"Mingan Summit"`, `"North NSMNP Exit Trailhead"`) without requiring any special tagging: a name containing "trailhead" → start, "summit"/"peak" → peak, "exit" → exit (checked first, since a name can contain both "exit" and "trailhead"), "camp"/"campsite" → camp, "water"/"spring" → water, "danger"/"hazard" → danger.
+- **Track endpoints are always treated as candidate Start/Exit points**, regardless of whether the file has waypoints — not just as a no-waypoints fallback. If a real waypoint of that role already sits within 100m of the endpoint, it's used instead (no duplicate); otherwise the endpoint itself is added as an inferred Start/Exit alongside whatever other waypoints (peaks, etc.) the file has. This runs in the confirmation modal (§4), not in `analyzeGpx()` itself — the analyzer stays a pure reporter of what's in the file.
   - Waypoints matching none of the above are still kept as generic POIs, just unclassified — this is expected for a file like an AllTrails numbered-peaks export ("PEAK 1", "PEAK 2", …) with no descriptive role in the name itself.
 
 ### 2.3 Multi-track files
@@ -94,7 +95,7 @@ CREATE TABLE submission_pois (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   submission_id uuid NOT NULL REFERENCES user_route_submissions(id) ON DELETE CASCADE,
   name text NOT NULL,
-  poi_type text NOT NULL CHECK (poi_type IN ('start', 'exit', 'camp', 'water', 'summit', 'poi', 'danger', 'other')),
+  poi_type text NOT NULL CHECK (poi_type IN ('start', 'exit', 'camp', 'water', 'peak', 'poi', 'danger', 'other')),
   geometry geometry(Point, 4326) NOT NULL,
   source text NOT NULL DEFAULT 'contributor' CHECK (source IN ('contributor', 'inferred')),
   created_at timestamptz DEFAULT now()
@@ -113,12 +114,12 @@ Two different `poi_type` vocabularies exist and don't currently talk to each oth
 | `exit` | `jump_off` |
 | `camp` | *(no equivalent yet — would need adding)* |
 | `water` | *(no equivalent yet — would need adding)* |
-| `summit` | *(no equivalent yet — would need adding)* |
+| `peak` | *(no equivalent yet — would need adding)* |
 | `poi` | *(ambiguous — admin picks on promotion)* |
 | `danger` | *(no equivalent yet — would need adding)* |
 | `other` | *(admin picks on promotion)* |
 
-`pois.poi_type` today only has real map-legend meaning for `jump_off`, `supply`, `guides_shed`, `hospital`, `police`, `military` (per [CONTEXT.md](./CONTEXT.md)) — camp/water/summit/danger aren't rendering-ready concepts on the map yet. Promotion should stay a manual admin action until those types have real map treatment, not an automatic mapping.
+`pois.poi_type` today only has real map-legend meaning for `jump_off`, `supply`, `guides_shed`, `hospital`, `police`, `military` (per [CONTEXT.md](./CONTEXT.md)) — camp/water/peak/danger aren't rendering-ready concepts on the map yet. Promotion should stay a manual admin action until those types have real map treatment, not an automatic mapping.
 
 ### 5.2 Known schema wart (not fixed in this pass)
 

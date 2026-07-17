@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS submission_pois (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   submission_id uuid NOT NULL REFERENCES user_route_submissions(id) ON DELETE CASCADE,
   name text NOT NULL,
-  poi_type text NOT NULL CHECK (poi_type IN ('start', 'exit', 'camp', 'water', 'summit', 'poi', 'danger', 'other')),
+  poi_type text NOT NULL CHECK (poi_type IN ('start', 'exit', 'camp', 'water', 'peak', 'poi', 'danger', 'other')),
   geometry geometry(Point, 4326) NOT NULL,
   source text NOT NULL DEFAULT 'contributor' CHECK (source IN ('contributor', 'inferred')),
   created_at timestamptz DEFAULT now()

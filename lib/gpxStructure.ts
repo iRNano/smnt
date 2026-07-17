@@ -15,7 +15,7 @@ export type WaypointRole =
   | "exit"
   | "camp"
   | "water"
-  | "summit"
+  | "peak"
   | "poi"
   | "danger"
   | "other";
@@ -58,7 +58,7 @@ const NAME_PREFIX_ROLES: { prefix: string; role: WaypointRole }[] = [
 const SYM_ROLES: Record<string, WaypointRole> = {
   trailhead: "start",
   "parking area": "start",
-  summit: "summit",
+  summit: "peak",
   "water source": "water",
   campsite: "camp",
   "danger area": "danger",
@@ -74,7 +74,7 @@ const SYM_ROLES: Record<string, WaypointRole> = {
 const NAME_SUBSTRING_ROLES: { pattern: RegExp; role: WaypointRole }[] = [
   { pattern: /exit/i, role: "exit" },
   { pattern: /trail\s*head/i, role: "start" },
-  { pattern: /summit|peak/i, role: "summit" },
+  { pattern: /summit|peak/i, role: "peak" },
   { pattern: /camp(site)?/i, role: "camp" },
   { pattern: /water|spring/i, role: "water" },
   { pattern: /danger|hazard/i, role: "danger" },
