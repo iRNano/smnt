@@ -49,7 +49,7 @@ export function Modal({ open, onClose, title, children, maxWidth = "lg" }: Props
         className={`relative z-10 flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl bg-white shadow-xl ${widthClass[maxWidth]}`}
       >
         <div className="flex items-center justify-between border-b border-[#E5E5E5] px-5 py-4">
-          <h2 id="modal-title" className="text-lg font-semibold text-[#0A0A0A]">
+          <h2 id="modal-title" className="font-heading text-lg font-semibold text-[#2C2626]">
             {title}
           </h2>
           <button

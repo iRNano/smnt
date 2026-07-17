@@ -85,7 +85,6 @@ export function buildMapApiResponse(parts: {
   sections: SectionRow[];
   trailProfile: TrailProfile;
   trailCorridor: GeoJSON.Feature<GeoJSON.Polygon> | null;
-  entryExitPoisSuggested: PoiRow[];
 }): MapApiResponse {
   return {
     proposedMain: parts.proposedMain,
@@ -96,7 +95,6 @@ export function buildMapApiResponse(parts: {
     sections: parts.sections,
     trailProfile: parts.trailProfile,
     trailCorridor: parts.trailCorridor,
-    entryExitPoisSuggested: parts.entryExitPoisSuggested,
   };
 }
 
@@ -125,6 +123,7 @@ export function userRouteFromDbRow(row: {
   name: string;
   status: string;
   geometry: GeoJSON.LineString;
+  submitted_by?: string | null;
 }): TrailRouteRow {
   return {
     id: row.id,
@@ -132,7 +131,7 @@ export function userRouteFromDbRow(row: {
     category: "proposed_main",
     source: "user",
     status: row.status as UserRouteStatus,
-    explorer_credits: [],
+    explorer_credits: row.submitted_by ? [row.submitted_by] : [],
     opened_at: null,
     geometry: row.geometry,
   };

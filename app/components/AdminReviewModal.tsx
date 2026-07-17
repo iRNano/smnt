@@ -44,7 +44,10 @@ export function AdminReviewModal({
         const data = normalizeMapApiResponse(json as Record<string, unknown>);
         setProposedMain(data.proposedMain?.geometry ?? null);
         setSections(data.sections);
-        setEntryExitPois(data.entryExitPoisSuggested);
+        // Real start/exit waypoints only — no auto-computed placeholders.
+        setEntryExitPois(
+          (data.pois ?? []).filter((p) => p.poi_type === "start" || p.poi_type === "exit")
+        );
       });
   }, [open, submission?.reviewer_notes]);
 
@@ -80,7 +83,8 @@ export function AdminReviewModal({
           <div>
             <h3 className="font-semibold text-[#0A0A0A]">{submission.name}</h3>
             <p className="text-xs text-[#525252]">
-              Submitted {new Date(submission.submitted_at).toLocaleString()} ·{" "}
+              Submitted {new Date(submission.submitted_at).toLocaleString()}
+              {submission.submitted_by && <> by <strong>{submission.submitted_by}</strong></>} ·{" "}
               {routeLengthKm.toFixed(1)} km ·{" "}
               <span
                 className={
@@ -121,7 +125,7 @@ export function AdminReviewModal({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="e.g. Aligns with km 38–50 of proposed main"
-            className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#0D9488] focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20"
+            className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#F79F17] focus:outline-none focus:ring-2 focus:ring-[#F79F17]/20"
           />
         </div>
 
@@ -145,7 +149,7 @@ export function AdminReviewModal({
               type="button"
               disabled={busy}
               onClick={() => void decide("approved")}
-              className="flex-1 rounded-lg bg-[#0D9488] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0F766E] disabled:opacity-50"
+              className="flex-1 rounded bg-[#F79F17] px-4 py-2.5 text-sm font-bold text-[#2C2626] hover:bg-[#2C2626] hover:text-white disabled:opacity-50"
             >
               {busy ? "Saving…" : "Approve"}
             </button>

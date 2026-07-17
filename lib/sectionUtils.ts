@@ -5,6 +5,7 @@ import distance from "@turf/distance";
 import length from "@turf/length";
 import nearestPointOnLine from "@turf/nearest-point-on-line";
 import { lineString, point } from "@turf/helpers";
+import { getApproximateProvince } from "./philippineProvinces";
 import type { PoiRow, SectionRow } from "./mapTypes";
 
 const SECTION_MATCH_DISTANCE_KM = 3;
@@ -118,21 +119,36 @@ export function sliceLineByChainage(
 
 /**
  * Build trail sections between entry/exit boundaries projected onto the main line.
+ * When `entryExitPois` carry real names (e.g. real trailhead/exit waypoints, not
+ * elevation-heuristic guesses), those names are used for from/to instead of the
+ * generic "Entry/exit X km" fallback. `peakPois` (optional) are attached to whichever
+ * section their chainage falls within, for explorer-facing "what does this section pass"
+ * context. Province is approximated per docs/GPX_STRUCTURE.md's "not that accurate but
+ * helpful" framing — see lib/philippineProvinces.ts.
  */
 export function buildSectionsFromEntryExits(
   mainLine: GeoJSON.LineString,
-  entryExitPois: PoiRow[]
+  entryExitPois: PoiRow[],
+  peakPois: PoiRow[] = []
 ): SectionRow[] {
   if (!mainLine.coordinates || mainLine.coordinates.length < 2) return [];
 
   const line = lineString(mainLine.coordinates);
   const totalKm = length(line, { units: "kilometers" });
 
+  const kmToName = new Map<number, string>();
   const boundaryKm: number[] = [0, totalKm];
   for (const poi of entryExitPois) {
     const [lng, lat] = poi.geometry.coordinates;
-    boundaryKm.push(chainageKmOnLine(mainLine, [lng, lat]));
+    const km = chainageKmOnLine(mainLine, [lng, lat]);
+    boundaryKm.push(km);
+    kmToName.set(Math.round(km * 1000) / 1000, poi.name);
   }
+
+  const peakChainages = peakPois.map((poi) => ({
+    name: poi.name,
+    km: chainageKmOnLine(mainLine, poi.geometry.coordinates as [number, number]),
+  }));
 
   const unique = [...new Set(boundaryKm.map((d) => Math.round(d * 1000) / 1000))].sort(
     (x, y) => x - y
@@ -147,8 +163,29 @@ export function buildSectionsFromEntryExits(
     const geometry = sliceLineByChainage(mainLine, startKm, endKm);
     if (geometry.coordinates.length < 2) continue;
 
-    const fromLabel = startKm === 0 ? "Trail start" : `Entry/exit ${startKm.toFixed(1)} km`;
-    const toLabel = endKm >= totalKm - 0.05 ? "Trail end" : `Entry/exit ${endKm.toFixed(1)} km`;
+    const fromLabel =
+      kmToName.get(startKm) ?? (startKm === 0 ? "Trail start" : `Entry/exit ${startKm.toFixed(1)} km`);
+    const toLabel =
+      kmToName.get(endKm) ?? (endKm >= totalKm - 0.05 ? "Trail end" : `Entry/exit ${endKm.toFixed(1)} km`);
+
+    const peaksInSection = peakChainages
+      .filter((p) => p.km >= startKm && p.km <= endKm)
+      .map((p) => p.name);
+
+    const secLine = lineString(geometry.coordinates);
+    const secLengthKm = length(secLine, { units: "kilometers" });
+    const midpoint = along(secLine, secLengthKm / 2, { units: "kilometers" }).geometry.coordinates;
+    const firstCoord = geometry.coordinates[0]!;
+    const lastCoord = geometry.coordinates[geometry.coordinates.length - 1]!;
+    const provinces = [
+      ...new Set(
+        [
+          getApproximateProvince(firstCoord[0]!, firstCoord[1]!),
+          getApproximateProvince(midpoint[0]!, midpoint[1]!),
+          getApproximateProvince(lastCoord[0]!, lastCoord[1]!),
+        ].filter((p): p is string => !!p)
+      ),
+    ];
 
     sections.push({
       id: `sec-chainage-${i}`,
@@ -158,6 +195,8 @@ export function buildSectionsFromEntryExits(
       to_poi: toLabel,
       description: null,
       geometry,
+      provinces: provinces.length > 0 ? provinces : undefined,
+      peaksInSection: peaksInSection.length > 0 ? peaksInSection : undefined,
     });
   }
 
@@ -196,12 +235,13 @@ export function buildSectionsFromWaypoints(
 export function deriveTrailSections(
   mainLine: GeoJSON.LineString | null,
   entryExitPois: PoiRow[],
-  waypointLabels?: string[]
+  waypointLabels?: string[],
+  peakPois: PoiRow[] = []
 ): SectionRow[] {
   if (!mainLine?.coordinates?.length) return [];
 
   if (entryExitPois.length >= 2) {
-    const fromEntry = buildSectionsFromEntryExits(mainLine, entryExitPois);
+    const fromEntry = buildSectionsFromEntryExits(mainLine, entryExitPois, peakPois);
     if (fromEntry.length > 0) return fromEntry;
   }
 
@@ -214,7 +254,7 @@ export function deriveTrailSections(
     if (waypoints.length >= 2) return buildSectionsFromWaypoints(waypoints, waypointLabels);
   }
 
-  return buildSectionsFromEntryExits(mainLine, entryExitPois);
+  return buildSectionsFromEntryExits(mainLine, entryExitPois, peakPois);
 }
 
 /** Sections whose geometry lies within `maxDistanceKm` of any point on the user route. */

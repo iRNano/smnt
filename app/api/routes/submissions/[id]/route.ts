@@ -45,7 +45,7 @@ export async function PATCH(request: Request, context: RouteContext) {
           reviewer_notes = COALESCE($2, reviewer_notes),
           updated_at = now()
       WHERE id = $3
-      RETURNING id, name, status, reviewer_notes,
+      RETURNING id, name, status, reviewer_notes, submitted_by,
                 ST_AsGeoJSON(geometry)::json AS geometry,
                 submitted_at
     `,

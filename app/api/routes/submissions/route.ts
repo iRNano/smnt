@@ -37,7 +37,7 @@ export async function GET(request: Request) {
 
     const result = await client.query(
       `
-      SELECT id, name, status, reviewer_notes,
+      SELECT id, name, status, reviewer_notes, submitted_by,
              ST_AsGeoJSON(geometry)::json AS geometry,
              submitted_at
       FROM user_route_submissions

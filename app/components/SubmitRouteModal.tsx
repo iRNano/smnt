@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import along from "@turf/along";
+import distance from "@turf/distance";
 import length from "@turf/length";
 import { lineString } from "@turf/helpers";
 
@@ -8,9 +10,22 @@ import { Modal } from "./Modal";
 import { RoutePreviewMap } from "./RoutePreviewMap";
 import { normalizeMapApiResponse } from "@/lib/normalizeMapApiResponse";
 import { parseGpxXmlToLineString } from "@/lib/parseGpxToLineString";
+import { analyzeGpx, type WaypointRole } from "@/lib/gpxStructure";
 import { savePendingSubmission } from "@/lib/pendingSubmissionsStorage";
 import { matchSubmissionToSections } from "@/lib/sectionUtils";
 import type { MapData, SectionRow } from "@/lib/mapTypes";
+import type { ConfirmedPoi } from "@/lib/submissionTypes";
+
+const POI_TYPE_LABELS: Record<WaypointRole, string> = {
+  start: "Start",
+  exit: "Exit",
+  camp: "Camp",
+  water: "Water source",
+  peak: "Peak",
+  poi: "Point of interest",
+  danger: "Danger",
+  other: "Other",
+};
 
 const MAX_GPX_BYTES = 5 * 1024 * 1024;
 
@@ -23,23 +38,29 @@ type Props = {
 export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
   const [mapContext, setMapContext] = useState<Pick<
     MapData,
-    "proposedMain" | "sections" | "entryExitPoisSuggested"
+    "proposedMain" | "sections" | "pois"
   > | null>(null);
   const [routeName, setRouteName] = useState("");
+  const [submittedBy, setSubmittedBy] = useState("");
   const [userGeometry, setUserGeometry] = useState<GeoJSON.LineString | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [confirmedPois, setConfirmedPois] = useState<ConfirmedPoi[]>([]);
+  const [gpxWarnings, setGpxWarnings] = useState<string[]>([]);
 
   const resetForm = useCallback(() => {
     setRouteName("");
+    setSubmittedBy("");
     setUserGeometry(null);
     setFileName(null);
     setError(null);
     setSubmitting(false);
     setSuccess(false);
+    setConfirmedPois([]);
+    setGpxWarnings([]);
   }, []);
 
   useEffect(() => {
@@ -55,7 +76,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
         setMapContext({
           proposedMain: data.proposedMain,
           sections: data.sections,
-          entryExitPoisSuggested: data.entryExitPoisSuggested,
+          pois: data.pois,
         });
       })
       .catch(() => setError("Could not load proposed trail for preview."));
@@ -82,7 +103,78 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     setRouteName((prev) => prev || baseName);
     setUserGeometry(geometry);
     setFileName(file.name);
+
+    const analysis = analyzeGpx(xml);
+    setGpxWarnings(analysis.warnings);
+
+    const waypointPois: ConfirmedPoi[] = analysis.waypoints.map((w) => ({
+      name: w.name,
+      poi_type: w.role,
+      geometry: { type: "Point", coordinates: w.coordinates },
+      source: "contributor",
+    }));
+
+    // Always ensure the track's own endpoints are represented as Start/Exit, unless
+    // a waypoint of that role already sits close enough to the endpoint to be it.
+    const ENDPOINT_DEDUPE_KM = 0.1;
+    const nearEndpoint = (role: WaypointRole, coords: [number, number]) =>
+      waypointPois.some(
+        (p) =>
+          p.poi_type === role &&
+          distance(p.geometry.coordinates, coords, { units: "kilometers" }) < ENDPOINT_DEDUPE_KM
+      );
+
+    const combined = [...waypointPois];
+    if (geometry.coordinates.length >= 2) {
+      const first = geometry.coordinates[0]! as [number, number];
+      const last = geometry.coordinates[geometry.coordinates.length - 1]! as [number, number];
+      if (!nearEndpoint("start", first)) {
+        combined.unshift({
+          name: "Start",
+          poi_type: "start",
+          geometry: { type: "Point", coordinates: first },
+          source: "inferred",
+        });
+      }
+      if (!nearEndpoint("exit", last)) {
+        combined.push({
+          name: "Exit",
+          poi_type: "exit",
+          geometry: { type: "Point", coordinates: last },
+          source: "inferred",
+        });
+      }
+    }
+    setConfirmedPois(combined);
   }, []);
+
+  const updatePoiName = (idx: number, name: string) => {
+    setConfirmedPois((prev) => prev.map((p, i) => (i === idx ? { ...p, name } : p)));
+  };
+
+  const updatePoiType = (idx: number, poi_type: WaypointRole) => {
+    setConfirmedPois((prev) => prev.map((p, i) => (i === idx ? { ...p, poi_type } : p)));
+  };
+
+  const removePoi = (idx: number) => {
+    setConfirmedPois((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const addPoi = () => {
+    if (!userGeometry) return;
+    const mid = along(lineString(userGeometry.coordinates), routeLengthKm ? routeLengthKm / 2 : 0, {
+      units: "kilometers",
+    });
+    setConfirmedPois((prev) => [
+      ...prev,
+      {
+        name: "New point",
+        poi_type: "poi",
+        geometry: { type: "Point", coordinates: mid.geometry.coordinates as [number, number] },
+        source: "contributor",
+      },
+    ]);
+  };
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -120,6 +212,8 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     const gpxFile = new File([gpxXml], `${routeName}.gpx`, { type: "application/gpx+xml" });
     formData.append("gpx", gpxFile);
     formData.append("name", routeName.trim());
+    if (submittedBy.trim()) formData.append("submitted_by", submittedBy.trim());
+    if (confirmedPois.length > 0) formData.append("pois", JSON.stringify(confirmedPois));
 
     try {
       const res = await fetch("/api/routes/upload", { method: "POST", body: formData });
@@ -137,9 +231,12 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
           geometry: userGeometry,
           status: "pending",
           submitted_at: new Date().toISOString(),
+          submitted_by: submittedBy.trim() || null,
+          pois: confirmedPois.length > 0 ? confirmedPois : undefined,
         });
         setSuccess(true);
         onSubmitted?.();
+        window.dispatchEvent(new CustomEvent("smnt-map-refresh"));
         return;
       }
 
@@ -154,7 +251,10 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
 
   const proposedGeometry = mapContext?.proposedMain?.geometry ?? null;
   const sections = mapContext?.sections ?? [];
-  const entryExitPois = mapContext?.entryExitPoisSuggested ?? [];
+  // Real start/exit waypoints only — no auto-computed placeholders (see SMNTMapClient.tsx).
+  const entryExitPois = (mapContext?.pois ?? []).filter(
+    (p) => p.poi_type === "start" || p.poi_type === "exit"
+  );
 
   const matchedSections: SectionRow[] = useMemo(() => {
     if (!userGeometry || sections.length === 0) return [];
@@ -168,14 +268,14 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     <Modal open={open} onClose={onClose} title="Submit your route" maxWidth="xl">
       {success ? (
         <div className="space-y-4 py-2">
-          <p className="rounded-lg bg-[#F0FDFA] px-4 py-3 text-sm text-[#0F766E]">
+          <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Your route has been submitted and is <strong>pending SMNT review</strong>. It will appear
             on the map after an admin approves it.
           </p>
           <button
             type="button"
             onClick={onClose}
-            className="w-full rounded-lg bg-[#0D9488] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0F766E]"
+            className="w-full rounded bg-[#F79F17] px-4 py-2.5 text-sm font-bold text-[#2C2626] hover:bg-[#2C2626] hover:text-white"
           >
             Done
           </button>
@@ -190,8 +290,8 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
           <label
             className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 transition-colors ${
               dragOver
-                ? "border-[#0D9488] bg-[#F0FDFA]"
-                : "border-[#E5E5E5] bg-[#FAFAFA] hover:border-[#0D9488]"
+                ? "border-[#F79F17] bg-amber-50"
+                : "border-[#E5E5E5] bg-[#FAFAFA] hover:border-[#F79F17]"
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -224,8 +324,25 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
               value={routeName}
               onChange={(e) => setRouteName(e.target.value)}
               placeholder="e.g. Crow's recon — Section 3"
-              className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#0D9488] focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20"
+              className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#F79F17] focus:outline-none focus:ring-2 focus:ring-[#F79F17]/20"
             />
+          </div>
+
+          <div>
+            <label htmlFor="submitted-by" className="mb-1 block text-sm font-medium text-[#0A0A0A]">
+              Your name or organization
+            </label>
+            <input
+              id="submitted-by"
+              type="text"
+              value={submittedBy}
+              onChange={(e) => setSubmittedBy(e.target.value)}
+              placeholder="e.g. UP Mountaineers"
+              className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#F79F17] focus:outline-none focus:ring-2 focus:ring-[#F79F17]/20"
+            />
+            <p className="mt-1 text-xs text-[#525252]">
+              Shown as credit on the map once your route is approved.
+            </p>
           </div>
 
           {userGeometry && (
@@ -276,6 +393,76 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
             </div>
           )}
 
+          {userGeometry && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-[#0A0A0A]">Confirm points</span>
+                <button
+                  type="button"
+                  onClick={addPoi}
+                  className="text-xs font-semibold text-[#F79F17] hover:underline"
+                >
+                  + Add point
+                </button>
+              </div>
+              <p className="text-xs text-[#525252]">
+                {confirmedPois.some((p) => p.source === "inferred")
+                  ? "Detected from your GPX file. Points marked as guessed (Start/Exit from the track's endpoints) weren't in your file — confirm or correct them below."
+                  : "Detected from your GPX file. Adjust names/types or remove any that aren't useful."}
+              </p>
+              {gpxWarnings.length > 0 && (
+                <ul className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {gpxWarnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              )}
+              {confirmedPois.length === 0 ? (
+                <p className="text-xs text-[#78716c]">No points yet — add one if useful.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {confirmedPois.map((poi, idx) => (
+                    <li
+                      key={idx}
+                      className="flex items-center gap-2 rounded-lg border border-[#E5E5E5] bg-[#FAFAFA] px-2 py-2"
+                    >
+                      <input
+                        type="text"
+                        value={poi.name}
+                        onChange={(e) => updatePoiName(idx, e.target.value)}
+                        className="min-w-0 flex-1 rounded border border-[#E5E5E5] bg-white px-2 py-1 text-sm focus:border-[#F79F17] focus:outline-none"
+                      />
+                      {poi.source === "inferred" && (
+                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          Guessed
+                        </span>
+                      )}
+                      <select
+                        value={poi.poi_type}
+                        onChange={(e) => updatePoiType(idx, e.target.value as WaypointRole)}
+                        className="rounded border border-[#E5E5E5] bg-white px-2 py-1 text-sm focus:border-[#F79F17] focus:outline-none"
+                      >
+                        {(Object.keys(POI_TYPE_LABELS) as WaypointRole[]).map((role) => (
+                          <option key={role} value={role}>
+                            {POI_TYPE_LABELS[role]}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => removePoi(idx)}
+                        aria-label={`Remove ${poi.name}`}
+                        className="shrink-0 rounded px-2 py-1 text-sm text-[#991B1B] hover:bg-red-50"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
               {error}
@@ -294,7 +481,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
               type="button"
               disabled={!userGeometry || !routeName.trim() || submitting}
               onClick={() => void handleSubmit()}
-              className="flex-1 rounded-lg bg-[#0D9488] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0F766E] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex-1 rounded bg-[#F79F17] px-4 py-2.5 text-sm font-bold text-[#2C2626] hover:bg-[#2C2626] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? "Submitting…" : "Submit for review"}
             </button>

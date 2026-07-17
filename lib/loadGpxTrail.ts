@@ -11,6 +11,10 @@ import { lineString } from "@turf/helpers";
 import fs from "fs";
 import path from "path";
 import { DOMParser } from "@xmldom/xmldom";
+import { analyzeGpx } from "./gpxStructure";
+import { getApproximateProvince } from "./philippineProvinces";
+import { getPeakElevationM } from "./gpxPeakElevations";
+import { getWaypointAccessNote } from "./gpxWaypointAccess";
 
 const GPX_PATH = path.join(process.cwd(), "lib", "data", "The-Sierra-Madre-Nature-Trail.gpx");
 const GPX_NS = "http://www.topografix.com/GPX/1/1";
@@ -24,12 +28,16 @@ export type EntryExitPoiRow = {
   poi_type: string;
   description: string | null;
   geometry: GeoJSON.Point;
+  province?: string | null;
+  elevation_m?: number | null;
+  accessNote?: string | null;
 };
 
 let cached: GeoJSON.LineString | null | undefined = undefined;
 let profileCache: { distances: number[]; elevations: number[] } | null | undefined = undefined;
 let corridorCache: GeoJSON.Feature<GeoJSON.Polygon> | null | undefined = undefined;
 let entryExitSuggestedCache: EntryExitPoiRow[] | undefined = undefined;
+let gpxWaypointsCache: EntryExitPoiRow[] | undefined = undefined;
 
 /**
  * Returns the main track from the GPX file as a single LineString, or null if missing/failed.
@@ -211,4 +219,32 @@ export function getEntryExitPoisSuggested(): EntryExitPoiRow[] {
 
   entryExitSuggestedCache = pois;
   return pois;
+}
+
+/**
+ * Real named waypoints (<wpt>) from the authoritative GPX file — trailheads, exits,
+ * peaks, etc. — as opposed to getEntryExitPoisSuggested()'s elevation-heuristic points.
+ * Cached in memory.
+ */
+export function getGpxWaypoints(): EntryExitPoiRow[] {
+  if (gpxWaypointsCache !== undefined) return gpxWaypointsCache;
+
+  try {
+    const xml = fs.readFileSync(GPX_PATH, "utf-8");
+    const analysis = analyzeGpx(xml);
+    gpxWaypointsCache = analysis.waypoints.map((w, idx) => ({
+      id: `gpx-waypoint-${idx}`,
+      name: w.name,
+      poi_type: w.role,
+      description: null,
+      geometry: { type: "Point", coordinates: w.coordinates },
+      province: getApproximateProvince(w.coordinates[0], w.coordinates[1]),
+      elevation_m: getPeakElevationM(w.name),
+      accessNote: getWaypointAccessNote(w.name),
+    }));
+    return gpxWaypointsCache;
+  } catch {
+    gpxWaypointsCache = [];
+    return gpxWaypointsCache;
+  }
 }

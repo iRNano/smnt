@@ -12,6 +12,7 @@ import {
   getGpxCorridor,
   getGpxMainRouteGeometry,
   getGpxProfile,
+  getGpxWaypoints,
 } from "@/lib/loadGpxTrail";
 import { mockMapData } from "@/lib/mockMapData";
 import { deriveTrailSections } from "@/lib/sectionUtils";
@@ -37,7 +38,7 @@ async function loadFromTrailRoutesV2(client: PoolClient): Promise<{
       ORDER BY category, name
     `),
     client.query(`
-      SELECT id, name, status,
+      SELECT id, name, status, submitted_by,
              ST_AsGeoJSON(geometry)::json AS geometry
       FROM user_route_submissions
       WHERE status = 'approved'
@@ -156,8 +157,19 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
         ? proposedMainFromGeometry("gpx-trail", "Sierra Madre Nature Trail", gpxGeometry)
         : null;
     const entryExitPoisSuggested = getEntryExitPoisSuggested();
+    const gpxWaypoints = getGpxWaypoints();
+    const realBoundaryPois = gpxWaypoints.filter(
+      (p) => p.poi_type === "start" || p.poi_type === "exit"
+    );
+    const peakPois = gpxWaypoints.filter((p) => p.poi_type === "peak");
+    // Prefer real trailhead/exit waypoints for section boundaries over the elevation-heuristic
+    // guesses — see docs/GPX_STRUCTURE.md. Falls back to the heuristic if a file has too few.
+    const sectionBoundaryPois =
+      realBoundaryPois.length >= 2 ? realBoundaryPois : entryExitPoisSuggested;
     if (gpxSectionsCache === undefined) {
-      gpxSectionsCache = gpxGeometry ? deriveTrailSections(gpxGeometry, entryExitPoisSuggested) : [];
+      gpxSectionsCache = gpxGeometry
+        ? deriveTrailSections(gpxGeometry, sectionBoundaryPois, undefined, peakPois)
+        : [];
     }
     const sections = gpxSectionsCache;
 
@@ -165,11 +177,10 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
       proposedMain,
       officialRoutes: [],
       userRoutes: [],
-      pois: [],
+      pois: gpxWaypoints,
       sections,
       trailProfile: getGpxProfile(),
       trailCorridor: getGpxCorridor(),
-      entryExitPoisSuggested,
     });
   }
 
@@ -182,7 +193,6 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
       ...data,
       trailProfile: null,
       trailCorridor: null,
-      entryExitPoisSuggested: [],
     });
   } finally {
     client.release();

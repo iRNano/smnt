@@ -5,6 +5,7 @@ import length from "@turf/length";
 import { lineString } from "@turf/helpers";
 
 import { RoutePreviewMap } from "./RoutePreviewMap";
+import { getPeakElevationM } from "@/lib/gpxPeakElevations";
 import type { SectionRow } from "@/lib/mapTypes";
 
 type Props = {
@@ -35,6 +36,32 @@ export function SectionDetail({ section, mainLine = null, showPreviewMap = true 
       </p>
       {section.description && (
         <p className="text-sm leading-relaxed text-[#525252]">{section.description}</p>
+      )}
+      {section.peaksInSection && section.peaksInSection.length > 0 && (
+        <p className="text-sm leading-relaxed text-[#525252]">
+          <span className="font-medium text-[#0A0A0A]">Passes near:</span>{" "}
+          {section.peaksInSection
+            .map((name) => {
+              const elevation = getPeakElevationM(name);
+              return elevation != null ? `${name} (${elevation.toLocaleString()} m)` : name;
+            })
+            .join(", ")}
+        </p>
+      )}
+      {section.provinces && section.provinces.length > 0 && (
+        <div className="rounded-lg border border-[#E5E5E5] bg-[#FAFAFA] px-3 py-2 text-xs text-[#525252]">
+          <p>
+            <span className="font-medium text-[#0A0A0A]">
+              Province{section.provinces.length > 1 ? "s" : ""}:
+            </span>{" "}
+            {section.provinces.join(", ")}
+          </p>
+          <p className="mt-1">
+            Proposed route only — not all sections are field-verified. For logistics and
+            permits, start with the {section.provinces.length > 1 ? "relevant" : ""} provincial
+            tourism or environment office. Boundaries are approximate; verify locally.
+          </p>
+        </div>
       )}
       {showPreviewMap && (
         <RoutePreviewMap

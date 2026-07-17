@@ -7,6 +7,7 @@ type Props = {
   idPrefix?: string;
   outsideMaskFeature?: GeoJSON.Feature<GeoJSON.Polygon> | null;
   outsideMaskOpacity?: number;
+  parkBoundaryFeatures?: GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
   corridorFeatures: GeoJSON.FeatureCollection<GeoJSON.Polygon>;
   sectionHighlightFeatures?: GeoJSON.FeatureCollection<GeoJSON.Polygon>;
   sectionHitFeatures?: GeoJSON.FeatureCollection<GeoJSON.LineString>;
@@ -20,12 +21,15 @@ type Props = {
   entryExitLayerId: string;
   /** Brighter proposed main for dark basemap previews */
   proposedMainColor?: string;
+  showRoutes?: boolean;
+  showPois?: boolean;
 };
 
 export function MapTrailLayers({
   idPrefix = "",
   outsideMaskFeature = null,
   outsideMaskOpacity = 0.55,
+  parkBoundaryFeatures,
   corridorFeatures,
   sectionHighlightFeatures,
   sectionHitFeatures,
@@ -38,9 +42,13 @@ export function MapTrailLayers({
   poiFeatures,
   entryExitLayerId,
   proposedMainColor,
+  showRoutes = true,
+  showPois = true,
 }: Props) {
   const p = idPrefix;
   const hitLayerId = sectionHitLayerId ?? `${p}section-hit`;
+  const routesLayout = { visibility: showRoutes ? "visible" : "none" } as const;
+  const poisLayout = { visibility: showPois ? "visible" : "none" } as const;
 
   return (
     <>
@@ -60,11 +68,34 @@ export function MapTrailLayers({
           />
         </Source>
       )}
+      {parkBoundaryFeatures && parkBoundaryFeatures.features.length > 0 && (
+        <Source id={`${p}park-boundary`} type="geojson" data={parkBoundaryFeatures}>
+          <Layer
+            id={`${p}park-boundary-fill`}
+            type="fill"
+            paint={{
+              "fill-color": "#15803d",
+              "fill-opacity": 0.05,
+            }}
+          />
+          <Layer
+            id={`${p}park-boundary-line`}
+            type="line"
+            paint={{
+              "line-color": "#15803d",
+              "line-width": 1.5,
+              "line-opacity": 0.6,
+              "line-dasharray": [2, 2],
+            }}
+          />
+        </Source>
+      )}
       {corridorFeatures.features.length > 0 && (
         <Source id={`${p}corridor`} type="geojson" data={corridorFeatures}>
           <Layer
             id={`${p}corridor-fill`}
             type="fill"
+            layout={routesLayout}
             paint={{
               "fill-color": "#78716c",
               "fill-opacity": 0.14,
@@ -73,6 +104,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}corridor-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": "#57534e",
               "line-width": 1,
@@ -86,6 +118,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}section-highlight-fill`}
             type="fill"
+            layout={routesLayout}
             paint={{
               "fill-color": LAYER_COLORS.sectionHighlight,
               "fill-opacity": 0.38,
@@ -94,6 +127,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}section-highlight-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": LAYER_COLORS.sectionHighlight,
               "line-width": 2,
@@ -107,6 +141,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}proposed-main-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": proposedMainColor ?? LAYER_COLORS.proposedMain,
               "line-width": 5,
@@ -120,6 +155,7 @@ export function MapTrailLayers({
           <Layer
             id={routeCreditsHitLayerId ?? `${p}route-credits-hit`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": LAYER_COLORS.proposedMain,
               "line-width": 16,
@@ -133,6 +169,7 @@ export function MapTrailLayers({
           <Layer
             id={hitLayerId}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": LAYER_COLORS.proposedMain,
               "line-width": 14,
@@ -146,6 +183,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}official-routes-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": [
                 "match",
@@ -167,6 +205,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}user-routes-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": LAYER_COLORS.userRoute,
               "line-width": 5,
@@ -186,6 +225,7 @@ export function MapTrailLayers({
         <Layer
           id={entryExitLayerId}
           type="circle"
+          layout={poisLayout}
           paint={{
             "circle-radius": 8,
             "circle-color": "#C2410C",

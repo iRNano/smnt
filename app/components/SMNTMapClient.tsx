@@ -18,6 +18,8 @@ import { RotateIcon } from "./RotateIcon";
 import { SectionDetail } from "./SectionDetail";
 import { normalizeMapApiResponse } from "@/lib/normalizeMapApiResponse";
 import { sectionsToHighlightCollection } from "@/lib/sectionUtils";
+import { sierraMadreExtent } from "@/lib/sierraMadreExtent";
+import { loadLocalUserRoutes, mergeUserRoutes } from "@/lib/userRoutesStorage";
 import { LAYER_COLORS } from "@/lib/mapApiBuilder";
 import type { MapData, PoiRow, SectionRow, TrailRouteRow } from "@/lib/mapTypes";
 
@@ -128,6 +130,16 @@ function MapContent({
   const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false);
   const [showScrollHint, setShowScrollHint] = useState(false);
   const scrollHintTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [visibleLayers, setVisibleLayers] = useState({ routes: true, pois: true });
+
+  useEffect(() => {
+    const onToggleLayer = (e: Event) => {
+      const { layer, visible } = (e as CustomEvent<{ layer: "routes" | "pois"; visible: boolean }>).detail;
+      setVisibleLayers((prev) => ({ ...prev, [layer]: visible }));
+    };
+    window.addEventListener("smnt-toggle-layer", onToggleLayer);
+    return () => window.removeEventListener("smnt-toggle-layer", onToggleLayer);
+  }, []);
 
   const boundsBbox = useMemo((): [number, number, number, number] | null => {
     const main = data.proposedMain;
@@ -246,9 +258,12 @@ function MapContent({
     return sectionsToHighlightCollection([hoveredSection]);
   }, [hoveredSection]);
 
+  // Only real named waypoints (from the GPX file) and user-placed points are shown as
+  // POI markers — no auto-computed "suggested" placeholders. See lib/loadGpxTrail.ts's
+  // getEntryExitPoisSuggested() for why: it's an elevation heuristic, not real data.
   const entryExitPois = useMemo(
-    () => [...(data.entryExitPoisSuggested ?? []), ...userEntryExitPois],
-    [data.entryExitPoisSuggested, userEntryExitPois]
+    () => [...(data.pois ?? []), ...userEntryExitPois],
+    [data.pois, userEntryExitPois]
   );
 
   const poiFeatures: GeoJSON.FeatureCollection<GeoJSON.Point> = useMemo(
@@ -378,36 +393,33 @@ function MapContent({
       if (!map) return;
       const point: [number, number] = [e.point.x, e.point.y];
 
+      const features = queryLayerFeatures(map, point, ENTRY_EXIT_POI_LAYER_ID);
+      if (features.length > 0) {
+        const f = features[0];
+        const props = f.properties as { id?: string; name?: string; description?: string };
+        const coords = (f.geometry as GeoJSON.Point).coordinates;
+        const [lng, lat] = coords;
+        const poi = entryExitPois.find((p) => p.id === props?.id);
+        setSelectedPoi(
+          poi ?? {
+            id: props?.id ?? "",
+            name: props?.name ?? "Entry/exit",
+            poi_type: "entry_exit",
+            description: props?.description ?? null,
+            geometry: { type: "Point", coordinates: [lng, lat] },
+          }
+        );
+        return;
+      }
+      setSelectedPoi(null);
+
       const sectionHits = queryLayerFeatures(map, point, SECTION_HIT_LAYER_ID);
       if (sectionHits.length > 0) {
         const id = sectionHits[0]?.properties?.id as string | undefined;
         const section = data.sections?.find((s) => s.id === id) ?? null;
         if (section) {
           setSelectedSectionDetail(section);
-          return;
         }
-      }
-
-      const features = queryLayerFeatures(map, point, ENTRY_EXIT_POI_LAYER_ID);
-      if (features.length === 0) {
-        setSelectedPoi(null);
-        return;
-      }
-      const f = features[0];
-      const props = f.properties as { id?: string; name?: string; description?: string };
-      const coords = (f.geometry as GeoJSON.Point).coordinates;
-      const [lng, lat] = coords;
-      const poi = entryExitPois.find((p) => p.id === props?.id);
-      if (poi) {
-        setSelectedPoi(poi);
-      } else {
-        setSelectedPoi({
-          id: props?.id ?? "",
-          name: props?.name ?? "Entry/exit",
-          poi_type: "entry_exit",
-          description: props?.description ?? null,
-          geometry: { type: "Point", coordinates: [lng, lat] },
-        });
       }
     },
     [entryExitPois, data.sections]
@@ -550,6 +562,9 @@ function MapContent({
           scrollZoom={scrollZoomEnabled}
         >
         <MapTrailLayers
+          parkBoundaryFeatures={sierraMadreExtent}
+          showRoutes={visibleLayers.routes}
+          showPois={visibleLayers.pois}
           corridorFeatures={corridorFeatures}
           sectionHighlightFeatures={sectionHighlightFeatures}
           sectionHitFeatures={sectionHitFeatures}
@@ -579,8 +594,14 @@ function MapContent({
           >
             <div className="min-w-[140px]">
               <strong>{selectedPoi.name}</strong>
+              {selectedPoi.elevation_m != null && (
+                <p className="mt-1 text-sm text-stone-600">{selectedPoi.elevation_m.toLocaleString()} m</p>
+              )}
               {selectedPoi.description && (
                 <p className="mt-1 text-sm">{selectedPoi.description}</p>
+              )}
+              {selectedPoi.accessNote && (
+                <p className="mt-1 text-xs text-stone-500">{selectedPoi.accessNote}</p>
               )}
             </div>
           </Popup>
@@ -687,7 +708,7 @@ function MapContent({
               <span className="text-stone-500">No explorers credited yet.</span>
               <button
                 type="button"
-                className="pointer-events-auto font-medium text-[#0D9488] hover:underline"
+                className="pointer-events-auto font-medium text-[#F79F17] hover:underline"
                 onClick={() => window.dispatchEvent(new Event("smnt-open-submit-route"))}
               >
                 Be the first →
@@ -721,7 +742,7 @@ function MapContent({
             <div className="mt-4 text-right text-sm">
               <a
                 href={`/sections/${selectedSectionDetail.slug}`}
-                className="text-[#0D9488] hover:underline"
+                className="text-[#F79F17] hover:underline"
               >
                 Open full page →
               </a>
@@ -758,6 +779,7 @@ export default function SMNTMapClient() {
   const [data, setData] = useState<MapData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [userEntryExitPois, setUserEntryExitPois] = useState<PoiRow[]>([]);
+  const [localUserRoutes, setLocalUserRoutes] = useState<TrailRouteRow[]>([]);
 
   const loadMapData = useCallback(() => {
     return fetch("/api/map")
@@ -774,11 +796,13 @@ export default function SMNTMapClient() {
 
   useEffect(() => {
     setUserEntryExitPois(loadUserEntryExitPois());
+    setLocalUserRoutes(loadLocalUserRoutes());
     loadMapData().catch((err) => setError(err.message));
   }, [loadMapData]);
 
   useEffect(() => {
     const onRefresh = () => {
+      setLocalUserRoutes(loadLocalUserRoutes());
       loadMapData().catch(() => {});
     };
     window.addEventListener("smnt-map-refresh", onRefresh);
@@ -827,9 +851,14 @@ export default function SMNTMapClient() {
     );
   }
 
+  const mergedData: MapData = {
+    ...data,
+    userRoutes: mergeUserRoutes(data.userRoutes, localUserRoutes),
+  };
+
   return (
     <MapContent
-      data={data}
+      data={mergedData}
       userEntryExitPois={userEntryExitPois}
       onAddEntryExit={handleAddEntryExit}
     />
