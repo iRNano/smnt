@@ -18,6 +18,7 @@ import { RotateIcon } from "./RotateIcon";
 import { SectionDetail } from "./SectionDetail";
 import { normalizeMapApiResponse } from "@/lib/normalizeMapApiResponse";
 import { sectionsToHighlightCollection } from "@/lib/sectionUtils";
+import { sierraMadreExtent } from "@/lib/sierraMadreExtent";
 import { LAYER_COLORS } from "@/lib/mapApiBuilder";
 import type { MapData, PoiRow, SectionRow, TrailRouteRow } from "@/lib/mapTypes";
 
@@ -550,6 +551,7 @@ function MapContent({
           scrollZoom={scrollZoomEnabled}
         >
         <MapTrailLayers
+          parkBoundaryFeatures={sierraMadreExtent}
           corridorFeatures={corridorFeatures}
           sectionHighlightFeatures={sectionHighlightFeatures}
           sectionHitFeatures={sectionHitFeatures}

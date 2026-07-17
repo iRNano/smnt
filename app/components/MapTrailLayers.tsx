@@ -7,6 +7,7 @@ type Props = {
   idPrefix?: string;
   outsideMaskFeature?: GeoJSON.Feature<GeoJSON.Polygon> | null;
   outsideMaskOpacity?: number;
+  parkBoundaryFeatures?: GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
   corridorFeatures: GeoJSON.FeatureCollection<GeoJSON.Polygon>;
   sectionHighlightFeatures?: GeoJSON.FeatureCollection<GeoJSON.Polygon>;
   sectionHitFeatures?: GeoJSON.FeatureCollection<GeoJSON.LineString>;
@@ -26,6 +27,7 @@ export function MapTrailLayers({
   idPrefix = "",
   outsideMaskFeature = null,
   outsideMaskOpacity = 0.55,
+  parkBoundaryFeatures,
   corridorFeatures,
   sectionHighlightFeatures,
   sectionHitFeatures,
@@ -56,6 +58,28 @@ export function MapTrailLayers({
             paint={{
               "fill-color": "#0a0f14",
               "fill-opacity": outsideMaskOpacity,
+            }}
+          />
+        </Source>
+      )}
+      {parkBoundaryFeatures && parkBoundaryFeatures.features.length > 0 && (
+        <Source id={`${p}park-boundary`} type="geojson" data={parkBoundaryFeatures}>
+          <Layer
+            id={`${p}park-boundary-fill`}
+            type="fill"
+            paint={{
+              "fill-color": "#15803d",
+              "fill-opacity": 0.05,
+            }}
+          />
+          <Layer
+            id={`${p}park-boundary-line`}
+            type="line"
+            paint={{
+              "line-color": "#15803d",
+              "line-width": 1.5,
+              "line-opacity": 0.6,
+              "line-dasharray": [2, 2],
             }}
           />
         </Source>
