@@ -30,14 +30,15 @@ Real mountain names visible on the topo sheets (Mount Tapha, Mount Anacuao, Moun
 ### 3. Access notes for a few trailheads (`lib/gpxWaypointAccess.ts`)
 Populated **only** where a municipality name and road connection were large and unambiguous on the sheet: Mauban Trailhead (Mauban, Quezon), Umiray Trailhead (near Dingalan, Aurora), Mingan Trailhead (near Gabaldon, Nueva Ecija). The other ~19 real start/exit waypoints are **not yet covered** — an explorer should trust "no access info yet" over a guessed route.
 
+## Peak elevations — sourced separately, not from these sheets
+
+At the image resolution available for reviewing the NAMRIA sheets, the small elevation digits printed next to peak symbols weren't legible with enough confidence to transcribe as fact — misreading one digit (e.g. 1,344m vs 1,844m) would be actively misleading for trip planning. Rather than force that, elevations for all 16 `peak`-role waypoints were sourced from **Mapbox's Terrain-RGB tileset** instead (`scripts/fetch-peak-elevations.ts`, `npm run elevations:fetch`) — a DEM-derived (SRTM/ASTER, ~30m source resolution) raster elevation source, decoded per-pixel at each peak's exact coordinate via standard Web Mercator tile math. Accurate to roughly ±10-15m, not survey-grade, but real data rather than a placeholder. Sanity-checked against publicly known figures: Anacuao Summit returned 1,821m (commonly cited ~1,850m) and Cagua Summit returned 1,018m (commonly cited 906-1,133m across sources) — both within plausible range, no outliers.
+
+Re-run `npm run elevations:fetch` any time the trail's waypoint set changes; it regenerates `lib/gpxPeakElevations.ts` from scratch.
+
 ## What was deliberately NOT extracted
 
-**Peak elevations (`lib/gpxPeakElevations.ts` is an empty scaffold).** At the image resolution available for review, the small elevation digits printed next to peak symbols weren't legible with enough confidence to transcribe as fact — misreading one digit (e.g. 1,344m vs 1,844m) would be actively misleading for trip planning, worse than having no number at all. The lookup table and wiring exist and work end-to-end; populating it needs either:
-- the finer 1:50,000-scale index sheets referenced in each topo sheet's own legend (higher resolution, larger labels), or
-- official NAMRIA control-point/elevation data directly, or
-- re-review of these same sheets at higher source resolution than what was available this session.
-
-**Full road-access tracing for all trailheads.** Same resolution/confidence issue, compounded by needing to trace road connectivity across sheet boundaries in some cases. Only the 3 clearest cases were captured (see above).
+**Full road-access tracing for all trailheads.** Same resolution/confidence issue as the deferred elevations originally were, compounded by needing to trace road connectivity across sheet boundaries in some cases. Only the 3 clearest cases were captured (see above) — Mapbox/OSM road data could plausibly fill this gap too, following the same pattern as the elevation fix, but hasn't been attempted yet.
 
 ## How to extend this later
 Both `lib/gpxPeakElevations.ts` and `lib/gpxWaypointAccess.ts` are simple `Record<string, value>` lookups keyed by exact waypoint name (see `lib/gpxStructure.ts`'s `analyzeGpx()` output for the canonical name list, currently 38 waypoints). Add entries directly; no other code changes needed — `lib/loadGpxTrail.ts`'s `getGpxWaypoints()` already wires both lookups in.
