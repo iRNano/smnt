@@ -390,36 +390,33 @@ function MapContent({
       if (!map) return;
       const point: [number, number] = [e.point.x, e.point.y];
 
+      const features = queryLayerFeatures(map, point, ENTRY_EXIT_POI_LAYER_ID);
+      if (features.length > 0) {
+        const f = features[0];
+        const props = f.properties as { id?: string; name?: string; description?: string };
+        const coords = (f.geometry as GeoJSON.Point).coordinates;
+        const [lng, lat] = coords;
+        const poi = entryExitPois.find((p) => p.id === props?.id);
+        setSelectedPoi(
+          poi ?? {
+            id: props?.id ?? "",
+            name: props?.name ?? "Entry/exit",
+            poi_type: "entry_exit",
+            description: props?.description ?? null,
+            geometry: { type: "Point", coordinates: [lng, lat] },
+          }
+        );
+        return;
+      }
+      setSelectedPoi(null);
+
       const sectionHits = queryLayerFeatures(map, point, SECTION_HIT_LAYER_ID);
       if (sectionHits.length > 0) {
         const id = sectionHits[0]?.properties?.id as string | undefined;
         const section = data.sections?.find((s) => s.id === id) ?? null;
         if (section) {
           setSelectedSectionDetail(section);
-          return;
         }
-      }
-
-      const features = queryLayerFeatures(map, point, ENTRY_EXIT_POI_LAYER_ID);
-      if (features.length === 0) {
-        setSelectedPoi(null);
-        return;
-      }
-      const f = features[0];
-      const props = f.properties as { id?: string; name?: string; description?: string };
-      const coords = (f.geometry as GeoJSON.Point).coordinates;
-      const [lng, lat] = coords;
-      const poi = entryExitPois.find((p) => p.id === props?.id);
-      if (poi) {
-        setSelectedPoi(poi);
-      } else {
-        setSelectedPoi({
-          id: props?.id ?? "",
-          name: props?.name ?? "Entry/exit",
-          poi_type: "entry_exit",
-          description: props?.description ?? null,
-          geometry: { type: "Point", coordinates: [lng, lat] },
-        });
       }
     },
     [entryExitPois, data.sections]
