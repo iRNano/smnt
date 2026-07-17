@@ -19,6 +19,7 @@ import { SectionDetail } from "./SectionDetail";
 import { normalizeMapApiResponse } from "@/lib/normalizeMapApiResponse";
 import { sectionsToHighlightCollection } from "@/lib/sectionUtils";
 import { sierraMadreExtent } from "@/lib/sierraMadreExtent";
+import { loadLocalUserRoutes, mergeUserRoutes } from "@/lib/userRoutesStorage";
 import { LAYER_COLORS } from "@/lib/mapApiBuilder";
 import type { MapData, PoiRow, SectionRow, TrailRouteRow } from "@/lib/mapTypes";
 
@@ -772,6 +773,7 @@ export default function SMNTMapClient() {
   const [data, setData] = useState<MapData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [userEntryExitPois, setUserEntryExitPois] = useState<PoiRow[]>([]);
+  const [localUserRoutes, setLocalUserRoutes] = useState<TrailRouteRow[]>([]);
 
   const loadMapData = useCallback(() => {
     return fetch("/api/map")
@@ -788,11 +790,13 @@ export default function SMNTMapClient() {
 
   useEffect(() => {
     setUserEntryExitPois(loadUserEntryExitPois());
+    setLocalUserRoutes(loadLocalUserRoutes());
     loadMapData().catch((err) => setError(err.message));
   }, [loadMapData]);
 
   useEffect(() => {
     const onRefresh = () => {
+      setLocalUserRoutes(loadLocalUserRoutes());
       loadMapData().catch(() => {});
     };
     window.addEventListener("smnt-map-refresh", onRefresh);
@@ -841,9 +845,14 @@ export default function SMNTMapClient() {
     );
   }
 
+  const mergedData: MapData = {
+    ...data,
+    userRoutes: mergeUserRoutes(data.userRoutes, localUserRoutes),
+  };
+
   return (
     <MapContent
-      data={data}
+      data={mergedData}
       userEntryExitPois={userEntryExitPois}
       onAddEntryExit={handleAddEntryExit}
     />

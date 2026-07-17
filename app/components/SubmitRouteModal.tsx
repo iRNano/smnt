@@ -140,6 +140,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
         });
         setSuccess(true);
         onSubmitted?.();
+        window.dispatchEvent(new CustomEvent("smnt-map-refresh"));
         return;
       }
 

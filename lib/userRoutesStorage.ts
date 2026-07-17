@@ -1,32 +1,20 @@
 import type { TrailRouteRow } from "./mapTypes";
+import { loadPendingSubmissions } from "./pendingSubmissionsStorage";
 
-const USER_ROUTES_STORAGE_KEY = "smnt-user-routes";
-
+/** Local (no-DB) submissions, converted to map-renderable routes. Rejected submissions are omitted. */
 export function loadLocalUserRoutes(): TrailRouteRow[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(USER_ROUTES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (r): r is TrailRouteRow =>
-        !!r &&
-        typeof r === "object" &&
-        typeof (r as TrailRouteRow).id === "string" &&
-        (r as TrailRouteRow).source === "user" &&
-        (r as TrailRouteRow).geometry?.type === "LineString" &&
-        Array.isArray((r as TrailRouteRow).geometry?.coordinates)
-    );
-  } catch {
-    return [];
-  }
-}
-
-export function saveLocalUserRoute(route: TrailRouteRow): void {
-  const existing = loadLocalUserRoutes();
-  const next = [...existing, route];
-  window.localStorage.setItem(USER_ROUTES_STORAGE_KEY, JSON.stringify(next));
+  return loadPendingSubmissions()
+    .filter((s) => s.status !== "rejected")
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      category: "proposed_main",
+      source: "user",
+      status: s.status,
+      explorer_credits: s.submitted_by ? [s.submitted_by] : [],
+      opened_at: null,
+      geometry: s.geometry,
+    }));
 }
 
 export function mergeUserRoutes(
@@ -37,5 +25,3 @@ export function mergeUserRoutes(
   const localOnly = fromLocal.filter((r) => !apiIds.has(r.id));
   return [...fromApi, ...localOnly];
 }
-
-export { USER_ROUTES_STORAGE_KEY };

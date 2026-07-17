@@ -7,4 +7,5 @@ export type RouteSubmission = {
   geometry: GeoJSON.LineString;
   submitted_at: string;
   reviewer_notes?: string | null;
+  submitted_by?: string | null;
 };
