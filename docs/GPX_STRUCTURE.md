@@ -58,7 +58,7 @@ Location: [lib/gpxStructure.ts](../lib/gpxStructure.ts) (shared analyzer, usable
 Run it against a file:
 
 ```bash
-node scripts/gpx-lint.mjs "path/to/file.gpx"
+npm run gpx:lint -- "path/to/file.gpx"
 ```
 
 Output includes: track count and point counts (flags multi-track files instead of silently merging), elevation coverage percentage, classified waypoints (start/end/camp/water/poi/danger/unclassified), and actionable warnings.
@@ -80,7 +80,7 @@ This is intentionally a **report, not an auto-fixer** — GPX structure implies 
 
 This is the mechanism that turns "GPX structure recommendations" from a wishlist into actual clean rows in the database — see §5 for how confirmed POIs are stored.
 
-**Implementation status:** not yet wired into `SubmitRouteModal`'s UI in this pass — `lib/gpxStructure.ts` (the analyzer both this modal and the CLI tool depend on) is built and ready to consume. Wiring the modal step is the next slice of work.
+**Implementation status:** shipped in `SubmitRouteModal.tsx`, list-based (name + type dropdown per point, add/remove) rather than draggable pins on the preview map — repositioning a point still requires removing and re-adding it at the route midpoint. Dragging pins to exact coordinates is the natural next improvement but wasn't built in this pass.
 
 ---
 
@@ -101,11 +101,32 @@ CREATE TABLE submission_pois (
 );
 ```
 
-On approval, `start`/`exit` rows can seed `entry_exit_pois`-equivalent data for that trail, and `poi`/`camp`/`water`/`danger` rows can be promoted into the main `pois` table with `poi_type` mapped accordingly — both promotions are admin-reviewed, not automatic, consistent with how route approval already works.
+On approval, `start`/`exit` rows can seed `entry_exit_pois`-equivalent data for that trail, and `poi`/`camp`/`water`/`danger` rows can be promoted into the main `pois` table with `poi_type` mapped accordingly (below) — both promotions are admin-reviewed, not automatic, consistent with how route approval already works.
+
+### 5.1 POI vocabulary mapping
+
+Two different `poi_type` vocabularies exist and don't currently talk to each other — worth fixing before that promotion step above is actually built, so it isn't guessing at the mapping later:
+
+| `submission_pois.poi_type` (this doc, §2.2) | `pois.poi_type` (existing v1 table, [scripts/schema-and-seed.sql](../scripts/schema-and-seed.sql)) |
+|---|---|
+| `start` | `jump_off` |
+| `exit` | `jump_off` |
+| `camp` | *(no equivalent yet — would need adding)* |
+| `water` | *(no equivalent yet — would need adding)* |
+| `summit` | *(no equivalent yet — would need adding)* |
+| `poi` | *(ambiguous — admin picks on promotion)* |
+| `danger` | *(no equivalent yet — would need adding)* |
+| `other` | *(admin picks on promotion)* |
+
+`pois.poi_type` today only has real map-legend meaning for `jump_off`, `supply`, `guides_shed`, `hospital`, `police`, `military` (per [CONTEXT.md](./CONTEXT.md)) — camp/water/summit/danger aren't rendering-ready concepts on the map yet. Promotion should stay a manual admin action until those types have real map treatment, not an automatic mapping.
+
+### 5.2 Known schema wart (not fixed in this pass)
+
+`lib/mapApiBuilder.ts`'s `userRouteFromDbRow` hardcodes `category: "proposed_main"` on every user-submitted route, regardless of what it actually is — a leftover of `TrailRouteRow.category` being a required field with no "not applicable" option for user routes. It's never written to a DB column (`user_route_submissions` has no `category` column), so it doesn't corrupt stored data, but it's a misleading in-memory value if anything ever queries/logs it expecting a real category. Fixing properly means making `TrailRouteRow.category` optional and threading that through every call site that reads it — flagged here rather than done, since it's unrelated to the GPX/POI work this pass focused on.
 
 ---
 
 ## References
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — target schema, migration phases
 - [lib/gpxStructure.ts](../lib/gpxStructure.ts) — analyzer implementation
-- [scripts/gpx-lint.mjs](../scripts/gpx-lint.mjs) — CLI tool
+- [scripts/gpx-lint.ts](../scripts/gpx-lint.ts) — CLI tool (`npm run gpx:lint -- <file>`)
