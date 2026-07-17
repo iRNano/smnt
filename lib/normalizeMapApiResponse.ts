@@ -18,6 +18,5 @@ export function normalizeMapApiResponse(json: Record<string, unknown>): MapApiRe
     sections: (json.sections ?? []) as SectionRow[],
     trailProfile: (json.trailProfile as MapApiResponse["trailProfile"]) ?? null,
     trailCorridor: (json.trailCorridor as MapApiResponse["trailCorridor"]) ?? null,
-    entryExitPoisSuggested: (json.entryExitPoisSuggested ?? []) as PoiRow[],
   });
 }

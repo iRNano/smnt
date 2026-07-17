@@ -38,7 +38,7 @@ type Props = {
 export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
   const [mapContext, setMapContext] = useState<Pick<
     MapData,
-    "proposedMain" | "sections" | "entryExitPoisSuggested"
+    "proposedMain" | "sections" | "pois"
   > | null>(null);
   const [routeName, setRouteName] = useState("");
   const [submittedBy, setSubmittedBy] = useState("");
@@ -76,7 +76,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
         setMapContext({
           proposedMain: data.proposedMain,
           sections: data.sections,
-          entryExitPoisSuggested: data.entryExitPoisSuggested,
+          pois: data.pois,
         });
       })
       .catch(() => setError("Could not load proposed trail for preview."));
@@ -251,7 +251,10 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
 
   const proposedGeometry = mapContext?.proposedMain?.geometry ?? null;
   const sections = mapContext?.sections ?? [];
-  const entryExitPois = mapContext?.entryExitPoisSuggested ?? [];
+  // Real start/exit waypoints only — no auto-computed placeholders (see SMNTMapClient.tsx).
+  const entryExitPois = (mapContext?.pois ?? []).filter(
+    (p) => p.poi_type === "start" || p.poi_type === "exit"
+  );
 
   const matchedSections: SectionRow[] = useMemo(() => {
     if (!userGeometry || sections.length === 0) return [];

@@ -63,7 +63,6 @@ export type MapApiResponse = {
   sections: SectionRow[];
   trailProfile: TrailProfile;
   trailCorridor: GeoJSON.Feature<GeoJSON.Polygon> | null;
-  entryExitPoisSuggested: PoiRow[];
 };
 
 export type MapData = MapApiResponse;

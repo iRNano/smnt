@@ -44,7 +44,10 @@ export function AdminReviewModal({
         const data = normalizeMapApiResponse(json as Record<string, unknown>);
         setProposedMain(data.proposedMain?.geometry ?? null);
         setSections(data.sections);
-        setEntryExitPois(data.entryExitPoisSuggested);
+        // Real start/exit waypoints only — no auto-computed placeholders.
+        setEntryExitPois(
+          (data.pois ?? []).filter((p) => p.poi_type === "start" || p.poi_type === "exit")
+        );
       });
   }, [open, submission?.reviewer_notes]);
 

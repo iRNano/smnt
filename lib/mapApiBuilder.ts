@@ -85,7 +85,6 @@ export function buildMapApiResponse(parts: {
   sections: SectionRow[];
   trailProfile: TrailProfile;
   trailCorridor: GeoJSON.Feature<GeoJSON.Polygon> | null;
-  entryExitPoisSuggested: PoiRow[];
 }): MapApiResponse {
   return {
     proposedMain: parts.proposedMain,
@@ -96,7 +95,6 @@ export function buildMapApiResponse(parts: {
     sections: parts.sections,
     trailProfile: parts.trailProfile,
     trailCorridor: parts.trailCorridor,
-    entryExitPoisSuggested: parts.entryExitPoisSuggested,
   };
 }
 

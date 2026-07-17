@@ -181,7 +181,6 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
       sections,
       trailProfile: getGpxProfile(),
       trailCorridor: getGpxCorridor(),
-      entryExitPoisSuggested,
     });
   }
 
@@ -194,7 +193,6 @@ export async function getMapApiResponse(): Promise<MapApiResponse> {
       ...data,
       trailProfile: null,
       trailCorridor: null,
-      entryExitPoisSuggested: [],
     });
   } finally {
     client.release();
