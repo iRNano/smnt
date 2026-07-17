@@ -17,10 +17,12 @@ export default async function SectionPage({ params }: Props) {
     <div className="min-h-screen flex flex-col bg-[#FAFAFA] text-[#0A0A0A]">
       <SMNTHeader />
       <main className="flex-1 max-w-2xl mx-auto w-full px-6 py-12">
-        <h1 className="text-2xl font-bold mb-4">{section.name}</h1>
+        <h1 className="font-heading text-3xl font-bold uppercase tracking-wide text-[#2C2626] mb-4">
+          {section.name}
+        </h1>
         <SectionDetail section={section} mainLine={mapData.proposedMain?.geometry ?? null} />
         <p className="mt-6 text-[#525252] leading-relaxed">
-          <Link href="/" className="text-[#0D9488] hover:underline">
+          <Link href="/" className="text-[#F79F17] font-semibold hover:underline">
             ← Back to map
           </Link>
         </p>

@@ -8,20 +8,23 @@ export function SMNTHeader() {
       </div>
       <header className="h-14 border-b border-[#E5E5E5] bg-white flex items-center justify-between px-6">
         <div className="flex items-center gap-8">
-          <Link href="/" className="text-lg font-bold tracking-tight text-[#0A0A0A]">
+          <Link
+            href="/"
+            className="font-heading text-xl font-bold uppercase tracking-wide text-[#2C2626]"
+          >
             SMNT
           </Link>
-          <nav className="hidden md:flex gap-6 text-[15px] text-[#525252]">
-            <Link href="/" className="hover:text-[#0A0A0A]">
+          <nav className="hidden md:flex gap-6 font-heading text-sm font-semibold uppercase tracking-wide text-[#525252]">
+            <Link href="/" className="hover:text-[#F79F17]">
               Home
             </Link>
-            <Link href="/about" className="hover:text-[#0A0A0A]">
+            <Link href="/about" className="hover:text-[#F79F17]">
               About
             </Link>
-            <Link href="/contact" className="hover:text-[#0A0A0A]">
+            <Link href="/contact" className="hover:text-[#F79F17]">
               Contact
             </Link>
-            <Link href="/donors" className="hover:text-[#0A0A0A]">
+            <Link href="/donors" className="hover:text-[#F79F17]">
               Donors
             </Link>
           </nav>
@@ -33,8 +36,8 @@ export function SMNTHeader() {
 
 export function SMNTFooter() {
   return (
-    <footer className="border-t border-[#E5E5E5] bg-white px-6 py-4 text-sm text-[#525252]">
-      <Link href="/contact" className="hover:text-[#0A0A0A]">Contact</Link>
+    <footer className="bg-[#181818] px-6 py-5 text-sm text-[#999999]">
+      <Link href="/contact" className="hover:text-[#F79F17]">Contact</Link>
       {" · "}
       <span>Financial Report</span>
       {" · "}

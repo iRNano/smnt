@@ -15,16 +15,16 @@ export default function DesignPage() {
       {/* Header */}
       <header className="h-14 border-b border-[#E5E5E5] bg-white flex items-center justify-between px-6">
         <div className="flex items-center gap-8">
-          <Link href="/" className="text-lg font-bold tracking-tight">
+          <Link href="/" className="font-heading text-xl font-bold uppercase tracking-wide text-[#2C2626]">
             SMNT
           </Link>
-          <nav className="hidden md:flex gap-6 text-[15px] text-[#525252]">
-            <Link href="/design" className="font-medium text-[#0A0A0A]">Home</Link>
-            <Link href="/wireframes/explore" className="hover:text-[#0A0A0A]">Explore</Link>
-            <Link href="/wireframes/resources" className="hover:text-[#0A0A0A]">Resources</Link>
-            <Link href="/wireframes/operations" className="hover:text-[#0A0A0A]">Operations</Link>
-            <Link href="/wireframes/support" className="hover:text-[#0A0A0A]">Support</Link>
-            <Link href="/wireframes/about" className="hover:text-[#0A0A0A]">About</Link>
+          <nav className="hidden md:flex gap-6 font-heading text-sm font-semibold uppercase tracking-wide text-[#525252]">
+            <Link href="/design" className="text-[#2C2626]">Home</Link>
+            <Link href="/wireframes/explore" className="hover:text-[#F79F17]">Explore</Link>
+            <Link href="/wireframes/resources" className="hover:text-[#F79F17]">Resources</Link>
+            <Link href="/wireframes/operations" className="hover:text-[#F79F17]">Operations</Link>
+            <Link href="/wireframes/support" className="hover:text-[#F79F17]">Support</Link>
+            <Link href="/wireframes/about" className="hover:text-[#F79F17]">About</Link>
           </nav>
         </div>
       </header>
@@ -36,7 +36,7 @@ export default function DesignPage() {
             <button
               key={layer}
               type="button"
-              className="px-4 py-2 rounded-lg text-sm font-medium border border-[#E5E5E5] hover:border-[#0D9488] hover:text-[#0D9488] transition-colors"
+              className="rounded px-4 py-2 text-sm font-bold border border-[#E5E5E5] hover:border-[#F79F17] hover:text-[#F79F17] transition-colors"
             >
               {layer}
             </button>
@@ -45,13 +45,13 @@ export default function DesignPage() {
         <div className="flex gap-3">
           <Link
             href="/wireframes/explore"
-            className="px-5 py-2.5 rounded-lg text-sm font-medium bg-[#0D9488] text-white hover:bg-[#0F766E] transition-colors"
+            className="rounded px-5 py-2.5 text-sm font-bold bg-[#F79F17] text-[#2C2626] hover:bg-[#2C2626] hover:text-white transition-colors"
           >
             Submit route
           </Link>
           <Link
             href="/wireframes/resources"
-            className="px-5 py-2.5 rounded-lg text-sm font-medium border border-[#E5E5E5] hover:border-[#0D9488] hover:text-[#0D9488] transition-colors"
+            className="rounded px-5 py-2.5 text-sm font-bold border border-[#E5E5E5] hover:border-[#F79F17] hover:text-[#F79F17] transition-colors"
           >
             Explorer&apos;s Kit
           </Link>
@@ -108,13 +108,13 @@ export default function DesignPage() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-[#E5E5E5] bg-white px-6 py-4 text-sm text-[#525252]">
+      <footer className="bg-[#181818] px-6 py-5 text-sm text-[#999999]">
         Contact · Financial Report · Participating Orgs
       </footer>
 
       {/* Design system link */}
       <div className="fixed bottom-4 right-4 text-xs text-[#A3A3A3]">
-        <Link href="/wireframes" className="underline hover:text-[#0D9488]">LoFi wireframes</Link>
+        <Link href="/wireframes" className="underline hover:text-[#F79F17]">LoFi wireframes</Link>
       </div>
     </div>
   );

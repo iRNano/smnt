@@ -123,7 +123,9 @@ export default function AdminPage() {
             onSubmit={(e) => void handleLogin(e)}
             className="w-full max-w-sm rounded-xl border border-[#E5E5E5] bg-white p-6 shadow-sm"
           >
-            <h1 className="text-xl font-semibold text-[#0A0A0A]">SMNT Admin</h1>
+            <h1 className="font-heading text-xl font-bold uppercase tracking-wide text-[#2C2626]">
+              SMNT Admin
+            </h1>
             <p className="mt-1 text-sm text-[#525252]">
               Enter the admin secret to review route submissions.
             </p>
@@ -142,7 +144,7 @@ export default function AdminPage() {
             )}
             <button
               type="submit"
-              className="mt-4 w-full rounded-lg bg-[#0D9488] py-2.5 text-sm font-medium text-white hover:bg-[#0F766E]"
+              className="mt-4 w-full rounded bg-[#F79F17] py-2.5 text-sm font-bold text-[#2C2626] hover:bg-[#2C2626] hover:text-white"
             >
               Sign in
             </button>
@@ -159,7 +161,9 @@ export default function AdminPage() {
       <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-[#0A0A0A]">Route reviews</h1>
+            <h1 className="font-heading text-2xl font-bold uppercase tracking-wide text-[#2C2626]">
+              Route reviews
+            </h1>
             <p className="text-sm text-[#525252]">
               Approve or reject user-submitted GPX tracks.
               {usingLocalQueue && " (Showing local dev queue — set DATABASE_URL for production.)"}
@@ -183,10 +187,10 @@ export default function AdminPage() {
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium capitalize ${
+              className={`rounded px-4 py-2 text-sm font-bold capitalize ${
                 tab === t
-                  ? "bg-[#0D9488] text-white"
-                  : "border border-[#E5E5E5] bg-white text-[#525252] hover:border-[#0D9488]"
+                  ? "bg-[#F79F17] text-[#2C2626]"
+                  : "border border-[#E5E5E5] bg-white text-[#525252] hover:border-[#F79F17]"
               }`}
             >
               {t}

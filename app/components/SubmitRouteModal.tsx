@@ -168,14 +168,14 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     <Modal open={open} onClose={onClose} title="Submit your route" maxWidth="xl">
       {success ? (
         <div className="space-y-4 py-2">
-          <p className="rounded-lg bg-[#F0FDFA] px-4 py-3 text-sm text-[#0F766E]">
+          <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Your route has been submitted and is <strong>pending SMNT review</strong>. It will appear
             on the map after an admin approves it.
           </p>
           <button
             type="button"
             onClick={onClose}
-            className="w-full rounded-lg bg-[#0D9488] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0F766E]"
+            className="w-full rounded bg-[#F79F17] px-4 py-2.5 text-sm font-bold text-[#2C2626] hover:bg-[#2C2626] hover:text-white"
           >
             Done
           </button>
@@ -190,8 +190,8 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
           <label
             className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 transition-colors ${
               dragOver
-                ? "border-[#0D9488] bg-[#F0FDFA]"
-                : "border-[#E5E5E5] bg-[#FAFAFA] hover:border-[#0D9488]"
+                ? "border-[#F79F17] bg-amber-50"
+                : "border-[#E5E5E5] bg-[#FAFAFA] hover:border-[#F79F17]"
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -224,7 +224,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
               value={routeName}
               onChange={(e) => setRouteName(e.target.value)}
               placeholder="e.g. Crow's recon — Section 3"
-              className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#0D9488] focus:outline-none focus:ring-2 focus:ring-[#0D9488]/20"
+              className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#F79F17] focus:outline-none focus:ring-2 focus:ring-[#F79F17]/20"
             />
           </div>
 
@@ -294,7 +294,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
               type="button"
               disabled={!userGeometry || !routeName.trim() || submitting}
               onClick={() => void handleSubmit()}
-              className="flex-1 rounded-lg bg-[#0D9488] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0F766E] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex-1 rounded bg-[#F79F17] px-4 py-2.5 text-sm font-bold text-[#2C2626] hover:bg-[#2C2626] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? "Submitting…" : "Submit for review"}
             </button>

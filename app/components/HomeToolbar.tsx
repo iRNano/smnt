@@ -28,13 +28,13 @@ export function HomeToolbar() {
           <button
             type="button"
             onClick={() => setSubmitOpen(true)}
-            className="px-5 py-2.5 rounded-lg text-sm font-medium bg-[#0D9488] text-white hover:bg-[#0F766E] transition-colors"
+            className="rounded px-5 py-2.5 text-sm font-bold bg-[#F79F17] text-[#2C2626] hover:bg-[#2C2626] hover:text-white transition-colors"
           >
             Submit route
           </button>
           <a
             href="/donors"
-            className="px-5 py-2.5 rounded-lg text-sm font-medium border border-[#E5E5E5] hover:border-[#0D9488] hover:text-[#0D9488] transition-colors"
+            className="rounded px-5 py-2.5 text-sm font-bold border border-[#E5E5E5] hover:border-[#F79F17] hover:text-[#F79F17] transition-colors"
           >
             Explorer&apos;s Kit
           </a>

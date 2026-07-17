@@ -687,7 +687,7 @@ function MapContent({
               <span className="text-stone-500">No explorers credited yet.</span>
               <button
                 type="button"
-                className="pointer-events-auto font-medium text-[#0D9488] hover:underline"
+                className="pointer-events-auto font-medium text-[#F79F17] hover:underline"
                 onClick={() => window.dispatchEvent(new Event("smnt-open-submit-route"))}
               >
                 Be the first →
@@ -721,7 +721,7 @@ function MapContent({
             <div className="mt-4 text-right text-sm">
               <a
                 href={`/sections/${selectedSectionDetail.slug}`}
-                className="text-[#0D9488] hover:underline"
+                className="text-[#F79F17] hover:underline"
               >
                 Open full page →
               </a>

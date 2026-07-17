@@ -8,6 +8,7 @@
 ## 1. Design Principles
 
 - **Map-first:** Home is a horizontal, full-bleed map; minimal chrome so the map feels dominant.
+- **Bold & rugged:** Brand tone follows [upmountaineers.org](https://upmountaineers.org) — Oswald headlines (bold, uppercase, letter-spaced), a warm orange accent on charcoal, high-contrast CTAs.
 - **Younger audience:** Clear type, high contrast, fast feedback (hover, transitions).
 - **Ad-ready:** Consistent ad zones; premium slot on home without overwhelming the map.
 - **Accessible:** WCAG 2.1 AA contrast; focus states; touch targets ≥ 44px where possible.
@@ -30,20 +31,27 @@
 | **Route: exit** | `#EA580C` | `#F97316` | Exit routes |
 | **Route: not passable** | `#991B1B` | `#EF4444` | Red segments |
 | **Route: user input** | `#7C3AED` | `#A78BFA` | Pending / user (dashed when pending) |
-| **Accent** | `#0D9488` | `#2DD4BF` | CTAs, links |
+| **Existing trail (POI)** | `#0D9488` | `#2DD4BF` | POI markers — data color, kept distinct from brand accent |
+| **Accent (brand)** | `#F79F17` | `#F79F17` | CTAs, links, nav hover — from UPM's orange |
+| **Accent-ink** | `#2C2626` | `#2C2626` | Charcoal — text on accent, accent-button hover state |
+| **Ink (dark section)** | `#181818` | `#181818` | Footer / dark surfaces (from UPM footer) |
 | **Ad zone** | `#F5F5F5` | `#1E293B` | Ad placeholder bg |
+
+Note: route/POI colors above are semantic (data) colors and are intentionally kept separate from the brand accent so map legend meaning never collides with CTA styling.
 
 ### 2.2 Typography
 
+Fonts follow UPM's pairing: **Oswald** (bold, uppercase, letter-spaced) for headlines/nav/brand; **Open Sans** for body copy and buttons.
+
 | Role | Font | Size (px) | Weight | Line height |
 |------|------|-----------|--------|-------------|
-| **Display** | Geist / system sans | 32–40 | 700 | 1.2 |
-| **H1** | Geist / system sans | 24–28 | 600 | 1.3 |
-| **H2** | Geist / system sans | 20–22 | 600 | 1.35 |
-| **H3** | Geist / system sans | 18 | 600 | 1.4 |
-| **Body** | Geist / system sans | 16 | 400 | 1.5 |
-| **Small / caption** | Geist / system sans | 14 | 400 | 1.45 |
-| **Overline / label** | Geist / system sans | 12 | 500 | 1.4 | Letter-spacing: 0.04em |
+| **Display** | Oswald | 32–40 | 700 | 1.2 |
+| **H1** | Oswald, uppercase, tracking-wide | 24–28 | 700 | 1.3 |
+| **H2** | Oswald, uppercase, tracking-wide | 20–22 | 700 | 1.35 |
+| **H3** | Oswald | 18 | 600 | 1.4 |
+| **Body** | Open Sans | 16 | 400 | 1.5 |
+| **Small / caption** | Open Sans | 14 | 400 | 1.45 |
+| **Overline / label / nav** | Oswald, uppercase | 12–15 | 600 | 1.4 | Letter-spacing: 0.04em |
 
 ### 2.3 Spacing
 
@@ -100,8 +108,9 @@
 
 ### 3.6 Buttons
 
-- **Primary:** Accent bg; white text; hover darken  
-- **Secondary:** Outline `border`; text primary; hover bg subtle  
+- **Primary:** Accent (`#F79F17`) bg; charcoal (`#2C2626`) text, bold; hover inverts to charcoal bg / white text  
+- **Secondary:** Outline `border`; text primary; hover border + text accent  
+- **Radius:** 4px (squarer than default card radius, per UPM's rugged tone)  
 - **Height:** 40px (default), 48px (emphasis); padding 12px 24px  
 
 ### 3.7 Forms (Explore, Resources)
