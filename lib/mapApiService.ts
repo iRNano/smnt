@@ -37,7 +37,7 @@ async function loadFromTrailRoutesV2(client: PoolClient): Promise<{
       ORDER BY category, name
     `),
     client.query(`
-      SELECT id, name, status,
+      SELECT id, name, status, submitted_by,
              ST_AsGeoJSON(geometry)::json AS geometry
       FROM user_route_submissions
       WHERE status = 'approved'

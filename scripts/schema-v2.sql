@@ -110,3 +110,4 @@ ON CONFLICT (id) DO NOTHING;
 -- New application code reads trail_routes and user_route_submissions.
 
 ALTER TABLE user_route_submissions ADD COLUMN IF NOT EXISTS reviewer_notes text;
+ALTER TABLE user_route_submissions ADD COLUMN IF NOT EXISTS submitted_by text;

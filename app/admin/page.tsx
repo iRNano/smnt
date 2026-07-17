@@ -220,6 +220,7 @@ export default function AdminPage() {
                     <p className="font-medium text-[#0A0A0A]">{s.name}</p>
                     <p className="text-xs text-[#525252]">
                       {new Date(s.submitted_at).toLocaleString()}
+                      {s.submitted_by && <> · {s.submitted_by}</>}
                     </p>
                   </div>
                   <span

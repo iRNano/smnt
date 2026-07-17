@@ -26,6 +26,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     "proposedMain" | "sections" | "entryExitPoisSuggested"
   > | null>(null);
   const [routeName, setRouteName] = useState("");
+  const [submittedBy, setSubmittedBy] = useState("");
   const [userGeometry, setUserGeometry] = useState<GeoJSON.LineString | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -35,6 +36,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
 
   const resetForm = useCallback(() => {
     setRouteName("");
+    setSubmittedBy("");
     setUserGeometry(null);
     setFileName(null);
     setError(null);
@@ -120,6 +122,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
     const gpxFile = new File([gpxXml], `${routeName}.gpx`, { type: "application/gpx+xml" });
     formData.append("gpx", gpxFile);
     formData.append("name", routeName.trim());
+    if (submittedBy.trim()) formData.append("submitted_by", submittedBy.trim());
 
     try {
       const res = await fetch("/api/routes/upload", { method: "POST", body: formData });
@@ -137,6 +140,7 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
           geometry: userGeometry,
           status: "pending",
           submitted_at: new Date().toISOString(),
+          submitted_by: submittedBy.trim() || null,
         });
         setSuccess(true);
         onSubmitted?.();
@@ -227,6 +231,23 @@ export function SubmitRouteModal({ open, onClose, onSubmitted }: Props) {
               placeholder="e.g. Crow's recon — Section 3"
               className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#F79F17] focus:outline-none focus:ring-2 focus:ring-[#F79F17]/20"
             />
+          </div>
+
+          <div>
+            <label htmlFor="submitted-by" className="mb-1 block text-sm font-medium text-[#0A0A0A]">
+              Your name or organization
+            </label>
+            <input
+              id="submitted-by"
+              type="text"
+              value={submittedBy}
+              onChange={(e) => setSubmittedBy(e.target.value)}
+              placeholder="e.g. UP Mountaineers"
+              className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#F79F17] focus:outline-none focus:ring-2 focus:ring-[#F79F17]/20"
+            />
+            <p className="mt-1 text-xs text-[#525252]">
+              Shown as credit on the map once your route is approved.
+            </p>
           </div>
 
           {userGeometry && (

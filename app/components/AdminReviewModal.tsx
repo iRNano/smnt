@@ -80,7 +80,8 @@ export function AdminReviewModal({
           <div>
             <h3 className="font-semibold text-[#0A0A0A]">{submission.name}</h3>
             <p className="text-xs text-[#525252]">
-              Submitted {new Date(submission.submitted_at).toLocaleString()} ·{" "}
+              Submitted {new Date(submission.submitted_at).toLocaleString()}
+              {submission.submitted_by && <> by <strong>{submission.submitted_by}</strong></>} ·{" "}
               {routeLengthKm.toFixed(1)} km ·{" "}
               <span
                 className={

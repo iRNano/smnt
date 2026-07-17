@@ -28,6 +28,11 @@ export async function POST(request: Request) {
     const nameInput = formData.get("name");
     const routeName =
       typeof nameInput === "string" && nameInput.trim() ? nameInput.trim() : "User route";
+    const submittedByInput = formData.get("submitted_by");
+    const submittedBy =
+      typeof submittedByInput === "string" && submittedByInput.trim()
+        ? submittedByInput.trim()
+        : null;
 
     if (!file || !(file instanceof File)) {
       return NextResponse.json({ error: "Missing GPX file (field: gpx)." }, { status: 400 });
@@ -48,11 +53,11 @@ export async function POST(request: Request) {
 
     const result = await client.query(
       `
-      INSERT INTO user_route_submissions (name, geometry, status, source_format)
-      VALUES ($1, ST_SetSRID(ST_GeomFromGeoJSON($2), 4326), 'pending', 'gpx')
-      RETURNING id, name, status, ST_AsGeoJSON(geometry)::json AS geometry, submitted_at
+      INSERT INTO user_route_submissions (name, geometry, status, source_format, submitted_by)
+      VALUES ($1, ST_SetSRID(ST_GeomFromGeoJSON($2), 4326), 'pending', 'gpx', $3)
+      RETURNING id, name, status, ST_AsGeoJSON(geometry)::json AS geometry, submitted_at, submitted_by
     `,
-      [routeName, JSON.stringify(geometry)]
+      [routeName, JSON.stringify(geometry), submittedBy]
     );
 
     const row = result.rows[0];
@@ -62,6 +67,7 @@ export async function POST(request: Request) {
       status: row.status,
       geometry: row.geometry,
       submitted_at: row.submitted_at,
+      submitted_by: row.submitted_by,
     });
   } catch (err) {
     console.error("Route upload error:", err);
