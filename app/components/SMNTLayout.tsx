@@ -18,6 +18,9 @@ export function SMNTHeader() {
             <Link href="/" className="hover:text-[#F79F17]">
               Home
             </Link>
+            <Link href="/explore" className="hover:text-[#F79F17]">
+              Explore
+            </Link>
             <Link href="/about" className="hover:text-[#F79F17]">
               About
             </Link>
