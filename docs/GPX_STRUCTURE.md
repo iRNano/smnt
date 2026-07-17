@@ -129,5 +129,6 @@ Two different `poi_type` vocabularies exist and don't currently talk to each oth
 
 ## References
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — target schema, migration phases
+- [TOPO_REFERENCE.md](./TOPO_REFERENCE.md) — NAMRIA topo sheet data (elevations, access notes, province validation) used to enrich these same real waypoints
 - [lib/gpxStructure.ts](../lib/gpxStructure.ts) — analyzer implementation
 - [scripts/gpx-lint.ts](../scripts/gpx-lint.ts) — CLI tool (`npm run gpx:lint -- <file>`)

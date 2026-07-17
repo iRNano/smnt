@@ -5,6 +5,7 @@ import length from "@turf/length";
 import { lineString } from "@turf/helpers";
 
 import { RoutePreviewMap } from "./RoutePreviewMap";
+import { getPeakElevationM } from "@/lib/gpxPeakElevations";
 import type { SectionRow } from "@/lib/mapTypes";
 
 type Props = {
@@ -39,7 +40,12 @@ export function SectionDetail({ section, mainLine = null, showPreviewMap = true 
       {section.peaksInSection && section.peaksInSection.length > 0 && (
         <p className="text-sm leading-relaxed text-[#525252]">
           <span className="font-medium text-[#0A0A0A]">Passes near:</span>{" "}
-          {section.peaksInSection.join(", ")}
+          {section.peaksInSection
+            .map((name) => {
+              const elevation = getPeakElevationM(name);
+              return elevation != null ? `${name} (${elevation.toLocaleString()} m)` : name;
+            })
+            .join(", ")}
         </p>
       )}
       {section.provinces && section.provinces.length > 0 && (

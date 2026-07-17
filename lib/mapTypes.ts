@@ -35,6 +35,10 @@ export type PoiRow = {
   geometry: GeoJSON.Point;
   /** Approximate corridor-scoped province — see lib/philippineProvinces.ts. Not authoritative. */
   province?: string | null;
+  /** Sourced from NAMRIA 1:250,000 topo sheets — see docs/TOPO_REFERENCE.md. Only set when confidently matched. */
+  elevation_m?: number | null;
+  /** Sourced from NAMRIA 1:250,000 topo sheets — see docs/TOPO_REFERENCE.md. Only set when confidently traced. */
+  accessNote?: string | null;
 };
 
 export type SectionRow = {

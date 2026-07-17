@@ -44,12 +44,15 @@ const PROVINCE_ZONES: ProvinceZone[] = [
     bounds: [121.0, 15.75, 121.6, 16.45],
   },
   {
+    // Tightened against NAMRIA sheet 2506 (City of Ilagan, 17-18N -> Isabela) and 2510
+    // (Laur, 15-16N -> no Isabela listed) — see docs/TOPO_REFERENCE.md.
     name: "Isabela",
-    bounds: [121.6, 15.75, 122.6, 17.75],
+    bounds: [121.6, 16.0, 122.6, 18.0],
   },
   {
+    // Tightened against NAMRIA sheet 2504 (Aparri, 18-19N -> Cagayan only) — see docs/TOPO_REFERENCE.md.
     name: "Cagayan",
-    bounds: [121.8, 17.75, 122.6, 18.6],
+    bounds: [121.8, 18.0, 122.6, 18.6],
   },
 ];
 

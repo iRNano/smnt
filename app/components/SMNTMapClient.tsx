@@ -594,8 +594,14 @@ function MapContent({
           >
             <div className="min-w-[140px]">
               <strong>{selectedPoi.name}</strong>
+              {selectedPoi.elevation_m != null && (
+                <p className="mt-1 text-sm text-stone-600">{selectedPoi.elevation_m.toLocaleString()} m</p>
+              )}
               {selectedPoi.description && (
                 <p className="mt-1 text-sm">{selectedPoi.description}</p>
+              )}
+              {selectedPoi.accessNote && (
+                <p className="mt-1 text-xs text-stone-500">{selectedPoi.accessNote}</p>
               )}
             </div>
           </Popup>
