@@ -21,6 +21,8 @@ type Props = {
   entryExitLayerId: string;
   /** Brighter proposed main for dark basemap previews */
   proposedMainColor?: string;
+  showRoutes?: boolean;
+  showPois?: boolean;
 };
 
 export function MapTrailLayers({
@@ -40,9 +42,13 @@ export function MapTrailLayers({
   poiFeatures,
   entryExitLayerId,
   proposedMainColor,
+  showRoutes = true,
+  showPois = true,
 }: Props) {
   const p = idPrefix;
   const hitLayerId = sectionHitLayerId ?? `${p}section-hit`;
+  const routesLayout = { visibility: showRoutes ? "visible" : "none" } as const;
+  const poisLayout = { visibility: showPois ? "visible" : "none" } as const;
 
   return (
     <>
@@ -89,6 +95,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}corridor-fill`}
             type="fill"
+            layout={routesLayout}
             paint={{
               "fill-color": "#78716c",
               "fill-opacity": 0.14,
@@ -97,6 +104,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}corridor-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": "#57534e",
               "line-width": 1,
@@ -110,6 +118,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}section-highlight-fill`}
             type="fill"
+            layout={routesLayout}
             paint={{
               "fill-color": LAYER_COLORS.sectionHighlight,
               "fill-opacity": 0.38,
@@ -118,6 +127,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}section-highlight-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": LAYER_COLORS.sectionHighlight,
               "line-width": 2,
@@ -131,6 +141,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}proposed-main-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": proposedMainColor ?? LAYER_COLORS.proposedMain,
               "line-width": 5,
@@ -144,6 +155,7 @@ export function MapTrailLayers({
           <Layer
             id={routeCreditsHitLayerId ?? `${p}route-credits-hit`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": LAYER_COLORS.proposedMain,
               "line-width": 16,
@@ -157,6 +169,7 @@ export function MapTrailLayers({
           <Layer
             id={hitLayerId}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": LAYER_COLORS.proposedMain,
               "line-width": 14,
@@ -170,6 +183,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}official-routes-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": [
                 "match",
@@ -191,6 +205,7 @@ export function MapTrailLayers({
           <Layer
             id={`${p}user-routes-line`}
             type="line"
+            layout={routesLayout}
             paint={{
               "line-color": LAYER_COLORS.userRoute,
               "line-width": 5,
@@ -210,6 +225,7 @@ export function MapTrailLayers({
         <Layer
           id={entryExitLayerId}
           type="circle"
+          layout={poisLayout}
           paint={{
             "circle-radius": 8,
             "circle-color": "#C2410C",

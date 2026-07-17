@@ -129,6 +129,16 @@ function MapContent({
   const [scrollZoomEnabled, setScrollZoomEnabled] = useState(false);
   const [showScrollHint, setShowScrollHint] = useState(false);
   const scrollHintTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [visibleLayers, setVisibleLayers] = useState({ routes: true, pois: true });
+
+  useEffect(() => {
+    const onToggleLayer = (e: Event) => {
+      const { layer, visible } = (e as CustomEvent<{ layer: "routes" | "pois"; visible: boolean }>).detail;
+      setVisibleLayers((prev) => ({ ...prev, [layer]: visible }));
+    };
+    window.addEventListener("smnt-toggle-layer", onToggleLayer);
+    return () => window.removeEventListener("smnt-toggle-layer", onToggleLayer);
+  }, []);
 
   const boundsBbox = useMemo((): [number, number, number, number] | null => {
     const main = data.proposedMain;
@@ -552,6 +562,8 @@ function MapContent({
         >
         <MapTrailLayers
           parkBoundaryFeatures={sierraMadreExtent}
+          showRoutes={visibleLayers.routes}
+          showPois={visibleLayers.pois}
           corridorFeatures={corridorFeatures}
           sectionHighlightFeatures={sectionHighlightFeatures}
           sectionHitFeatures={sectionHitFeatures}
